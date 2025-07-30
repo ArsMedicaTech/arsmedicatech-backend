@@ -6,7 +6,7 @@ import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
-
+from urllib.parse import quote
 import sentry_sdk
 import werkzeug
 from flask import (Blueprint, Flask, Response, abort, jsonify, redirect,
@@ -1044,15 +1044,16 @@ def login_cognito():
         intent = 'signin'
         logger.info(f"Invalid intent: {intent}. Defaulting to 'signin'.")
     
-    # Pass both role and intent in the state parameter
+    # Pass both role and intent in the state parameter, and URL-encode it
     state = f"{role}:{intent}"
+    safe_state = quote(state, safe='')
     cognito_url = (
         f"https://{COGNITO_DOMAIN}/oauth2/authorize"
         f"?response_type=code"
         f"&client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"  # e.g., https://demo.arsmedicatech.com/auth/cognito
         f"&scope=openid+email+profile"
-        f"&state={state}"
+        f"&state={safe_state}"
     )
     return redirect(cognito_url)
 
