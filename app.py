@@ -1074,8 +1074,23 @@ def test_auth_error():
     error_description = request.args.get('error_description', 'Email already exists')
     suggested_action = request.args.get('suggested_action', 'login')
     intent = request.args.get('intent', 'signup')  # Add intent parameter
-    
-    # Redirect to frontend with error parameters (simulating the OAuth callback error flow)
+
+    # Whitelists for allowed values
+    allowed_errors = {'invalid_request', 'access_denied', 'unauthorized_client', 'unsupported_response_type', 'invalid_scope', 'server_error', 'temporarily_unavailable', 'email_exists'}
+    allowed_suggested_actions = {'login', 'signup', 'reset'}
+    allowed_intents = {'signin', 'signup', 'reset'}
+
+    # Validate parameters
+    if error not in allowed_errors:
+        error = 'invalid_request'
+    if suggested_action not in allowed_suggested_actions:
+        suggested_action = 'login'
+    if intent not in allowed_intents:
+        intent = 'signup'
+    # Optionally, limit error_description length and allowed characters
+    error_description = re.sub(r'[^a-zA-Z0-9 .,!@#\$%\^&\*\(\)\-\_\+=:;\'"]', '', error_description)[:200]
+
+    # Redirect to frontend with sanitized error parameters
     params = {
         "error": error,
         "error_description": error_description,
