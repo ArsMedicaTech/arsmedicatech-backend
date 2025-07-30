@@ -6,7 +6,7 @@ import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 import sentry_sdk
 import werkzeug
 from flask import (Blueprint, Flask, Response, abort, jsonify, redirect,
@@ -1076,8 +1076,13 @@ def test_auth_error():
     intent = request.args.get('intent', 'signup')  # Add intent parameter
     
     # Redirect to frontend with error parameters (simulating the OAuth callback error flow)
-    from urllib import parse
-    error_url = f"{APP_URL}?error={error}&error_description={parse.quote(error_description)}&suggested_action={suggested_action}&intent={intent}"
+    params = {
+        "error": error,
+        "error_description": error_description,
+        "suggested_action": suggested_action,
+        "intent": intent
+    }
+    error_url = f"{APP_URL}?{urlencode(params)}"
     return redirect(error_url)
 
 @app.route('/auth/logout', methods=['GET'])
