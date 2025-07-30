@@ -1196,12 +1196,21 @@ def get_plugins():
 @app.route('/plugin/<plugin_name>', methods=['GET'])
 def serve_plugin_js(plugin_name: str) -> Tuple[Response, int]:
     import os
-    plugin_js_path = Path(f'plugins/{plugin_name}/js')
-    js_file: str = os.path.join(plugin_js_path, 'index.js')
-    if not os.path.exists(js_file):
+    import re
+    from pathlib import Path
+    # Only allow plugin names with alphanumeric, underscore, and dash
+    if not re.match(r'^[\w\-]+$', plugin_name):
+        abort(400)
+    base_dir = Path('plugins').resolve()
+    plugin_js_path = (base_dir / plugin_name / 'js').resolve()
+    # Ensure the resolved path is within the plugins directory
+    if not str(plugin_js_path).startswith(str(base_dir)):
+        abort(403)
+    js_file = plugin_js_path / 'index.js'
+    if not js_file.exists():
         abort(404)
     print(f"Serving plugin JS for {plugin_name} from {js_file}")
-    response = send_from_directory(plugin_js_path, 'index.js', mimetype='application/javascript')
+    response = send_from_directory(str(plugin_js_path), 'index.js', mimetype='application/javascript')
     response.headers['Access-Control-Allow-Origin'] = '*'
     return response, 200
 
