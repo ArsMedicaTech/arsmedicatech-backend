@@ -2,6 +2,7 @@
 Main application file for the Flask server.
 """
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
@@ -909,7 +910,14 @@ def get_organization(org_id: str) -> Union[Tuple[Response, int], werkzeug.wrappe
     print(f"get_organization: {org_id}")
     if org_id.startswith('User:'):
         print(f"redirecting to /api/organizations/user/{org_id}")
-        return redirect(f'/api/organizations/user/{org_id}')
+        # Validate org_id to prevent open redirect and path traversal
+        import re
+        # Only allow alphanumeric, underscore, dash
+        if re.fullmatch(r'[\w-]+', org_id):
+            return redirect(f'/api/organizations/user/{org_id}')
+        else:
+            # Invalid org_id, abort with 400 Bad Request
+            abort(400, description="Invalid organization ID")
     from lib.routes.organizations import get_organization_route
     return get_organization_route(org_id)
 
