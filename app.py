@@ -1259,7 +1259,7 @@ def get_my_organization() -> Tuple[Response, int]:
         return jsonify({"error": "User is not affiliated with any organization."}), 403
     except Exception as e:
         logger.error(f"Error getting organization for user {current_user}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "An internal error has occurred."}), 500
 
 @app.route('/api/admin/clinics/<org_id>', methods=['GET'])
 def get_clinics(org_id: str) -> Tuple[Response, int]:
