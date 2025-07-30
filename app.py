@@ -1211,7 +1211,7 @@ def get_my_organization() -> Tuple[Response, int]:
         return jsonify(dict(org_id=org_d)), 200
     except UserNotAffiliatedError as e:
         logger.error(f"User {current_user} is not affiliated with an organization: {e}")
-        return jsonify({"error": str(e)}), 403
+        return jsonify({"error": "User is not affiliated with any organization."}), 403
     except Exception as e:
         logger.error(f"Error getting organization for user {current_user}: {e}")
         return jsonify({"error": str(e)}), 500
