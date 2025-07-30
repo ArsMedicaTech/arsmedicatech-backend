@@ -1207,7 +1207,10 @@ def serve_plugin_js(plugin_name: str) -> Tuple[Response, int]:
     plugin_js_path = (base_dir / plugin_name / 'js').resolve()
     js_file = (plugin_js_path / 'index.js').resolve()
     # Ensure the resolved js_file and plugin_js_path are within the plugins directory
-    if not str(js_file).startswith(str(base_dir)) or not str(plugin_js_path).startswith(str(base_dir)):
+    try:
+        js_file.relative_to(base_dir)
+        plugin_js_path.relative_to(base_dir)
+    except ValueError:
         abort(403)
     if not js_file.exists():
         abort(404)
