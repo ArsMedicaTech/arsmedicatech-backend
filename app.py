@@ -909,12 +909,13 @@ def get_organization(org_id: str) -> Union[Tuple[Response, int], werkzeug.wrappe
     """
     print(f"get_organization: {org_id}")
     if org_id.startswith('User:'):
-        print(f"redirecting to /api/organizations/user/{org_id}")
+        print(f"handling /api/organizations/user/{org_id} directly")
         # Validate org_id to prevent open redirect and path traversal
         import re
         # Only allow alphanumeric, underscore, dash
         if re.fullmatch(r'[\w-]+', org_id):
-            return redirect(f'/api/organizations/user/{org_id}')
+            from lib.routes.organizations import get_organization_by_user_id_route
+            return get_organization_by_user_id_route(org_id)
         else:
             # Invalid org_id, abort with 400 Bad Request
             abort(400, description="Invalid organization ID")
