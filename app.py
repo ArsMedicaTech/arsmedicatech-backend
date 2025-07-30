@@ -1199,12 +1199,14 @@ def serve_plugin_js(plugin_name: str) -> Tuple[Response, int]:
     import os
     import re
     from pathlib import Path
+    from werkzeug.utils import secure_filename
     # Only allow plugin names with alphanumeric, underscore, and dash
     # Disallow plugin names that are just dots or contain ".."
     if not re.match(r'^[\w\-]+$', plugin_name) or plugin_name in {'.', '..'} or '..' in plugin_name:
         abort(400)
+    safe_plugin_name = secure_filename(plugin_name)
     base_dir = Path('plugins').resolve()
-    plugin_js_path = (base_dir / plugin_name / 'js').resolve()
+    plugin_js_path = (base_dir / safe_plugin_name / 'js').resolve()
     js_file = (plugin_js_path / 'index.js').resolve()
     # Ensure the resolved js_file and plugin_js_path are within the plugins directory
     try:
@@ -1214,7 +1216,7 @@ def serve_plugin_js(plugin_name: str) -> Tuple[Response, int]:
         abort(403)
     if not js_file.exists():
         abort(404)
-    print(f"Serving plugin JS for {plugin_name} from {js_file}")
+    print(f"Serving plugin JS for {safe_plugin_name} from {js_file}")
     response = send_from_directory(str(plugin_js_path), 'index.js', mimetype='application/javascript')
     response.headers['Access-Control-Allow-Origin'] = '*'
     return response, 200
