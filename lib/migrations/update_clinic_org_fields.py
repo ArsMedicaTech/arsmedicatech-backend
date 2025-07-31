@@ -13,7 +13,8 @@ import sys
 # Add the parent directory to the path so we can import lib modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from lib.db.surreal import DbController
+from amt_nano.db.surreal import DbController
+
 from settings import logger
 
 

@@ -6,12 +6,12 @@ import json
 from typing import (Any, Callable, Collection, Dict, List, Optional, Sequence,
                     Union, cast)
 
+from amt_nano.services.encryption import get_encryption_service
 from openai import OpenAI
 from openai.types.beta.threads.runs import ToolCall
 from openai.types.chat import ChatCompletionMessageToolCall
 
 from lib.llm.mcp_tools import fetch_mcp_tool_defs
-from lib.services.encryption import get_encryption_service
 from settings import logger
 
 DEFAULT_SYSTEM_PROMPT = """

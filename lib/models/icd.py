@@ -5,10 +5,10 @@ import asyncio
 import csv
 from typing import Any, Dict, List
 
+from amt_nano.db.surreal import AsyncSurrealWrapper
+from amt_nano.services.apis import ICD10Code
 from surrealdb import AsyncSurreal  # type: ignore
 
-from lib.db.surreal import AsyncSurrealWrapper
-from lib.services.apis import ICD10Code
 from settings import (SURREALDB_ICD_DB, SURREALDB_NAMESPACE, SURREALDB_PASS,
                       SURREALDB_URL, SURREALDB_USER, logger)
 

@@ -5,7 +5,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from lib.db.surreal import DbController
+from amt_nano.db.surreal import DbController
+
 from lib.models.api_key import APIKey
 from lib.services.redis_client import get_redis_connection
 from settings import logger

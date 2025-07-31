@@ -3,7 +3,8 @@ Placeholder data generation functions for testing purposes
 """
 from typing import Union
 
-from lib.db.surreal import AsyncDbController, DbController
+from amt_nano.db.surreal import AsyncDbController, DbController
+
 from lib.models.patient.encounter_crud import store_encounter
 from lib.models.patient.encounter_model import Encounter
 from lib.models.patient.patient_crud import store_patient

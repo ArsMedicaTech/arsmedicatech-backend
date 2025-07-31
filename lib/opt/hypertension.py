@@ -4,8 +4,7 @@ Hypertension Diet Optimization Module
 from typing import Any, Dict
 
 import pandas as pd  # type: ignore
-
-from lib.services.optimal import OptimalMetadata, OptimalSchema
+from amt_nano.services.optimal import OptimalMetadata, OptimalSchema
 
 
 def create_food_data_pd() -> pd.DataFrame:

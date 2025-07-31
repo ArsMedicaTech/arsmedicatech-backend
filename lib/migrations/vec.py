@@ -3,9 +3,9 @@ Vector database migration script.
 """
 import asyncio
 
+from amt_nano.db.vec import Vec
 from openai import AsyncOpenAI
 
-from lib.db.vec import Vec
 from settings import MIGRATION_OPENAI_API_KEY, logger
 
 

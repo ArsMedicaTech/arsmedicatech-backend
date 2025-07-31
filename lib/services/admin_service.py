@@ -4,7 +4,8 @@ This service is for administration level users to pull (and in some times, modif
 """
 from typing import Any, Dict, List, Union
 
-from lib.db.surreal import AsyncDbController, DbController
+from amt_nano.db.surreal import AsyncDbController, DbController
+
 from lib.models.clinic import Clinic, ClinicType
 from lib.models.organization import Organization
 from lib.services.user_service import UserService

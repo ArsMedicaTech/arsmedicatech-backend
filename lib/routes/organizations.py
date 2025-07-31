@@ -5,9 +5,9 @@ They are imported by the main app.py file and wrapped with Flask routing decorat
 """
 from typing import Tuple
 
+from amt_nano.db.surreal import DbController
 from flask import Response, jsonify, request
 
-from lib.db.surreal import DbController
 from lib.models.organization import Organization, create_organization
 from lib.models.user.user import User
 from settings import logger

@@ -3,9 +3,9 @@ Webhook routes for managing webhook subscriptions
 """
 from typing import Any, Dict, List, Tuple
 
+from amt_nano.db.surreal import DbController
 from flask import Response, jsonify, request
 
-from lib.db.surreal import DbController
 from lib.models.webhook_subscription import WebhookSubscription
 from lib.services.auth_decorators import get_current_user
 from settings import logger

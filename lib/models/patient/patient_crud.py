@@ -3,7 +3,8 @@ CRUD operations for Patient model.
 """
 from typing import Any, Dict, List, Union, cast
 
-from lib.db.surreal import AsyncDbController, DbController
+from amt_nano.db.surreal import AsyncDbController, DbController
+
 from lib.models.patient.common import PatientDict
 from lib.models.patient.patient_model import Patient
 from settings import logger
