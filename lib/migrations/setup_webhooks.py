@@ -1,7 +1,8 @@
 """
 Migration script to set up webhook subscriptions table
 """
-from lib.db.surreal import DbController
+from amt_nano.db.surreal import DbController
+
 from settings import logger
 
 

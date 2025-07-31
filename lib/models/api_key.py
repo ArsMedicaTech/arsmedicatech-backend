@@ -1,8 +1,8 @@
 """
 API Key Model for 3rd Party Access
 """
-import secrets
 import hashlib
+import secrets
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -257,7 +257,7 @@ def create_api_key_schema() -> None:
     Creates the schema for API Key table in SurrealDB.
     :return: None
     """
-    from lib.db.surreal import DbController
+    from amt_nano.db.surreal import DbController
     
     db = DbController(namespace='arsmedicatech', database='patients')
     db.connect()

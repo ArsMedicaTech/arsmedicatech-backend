@@ -335,7 +335,7 @@ def get_cache_stats_route() -> Tuple[Response, int]:
     }
     """
     try:
-        from lib.services.cache_service import EntityCacheService
+        from amt_nano.services.cache_service import EntityCacheService
         db = DbController()
         stats = EntityCacheService.get_cache_stats(db)
         return jsonify(stats), 200
