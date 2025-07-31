@@ -4,7 +4,8 @@ This module defines a Clinic class and provides functions to interact with a Sur
 import json
 from typing import Any, Dict, List, TypedDict
 
-from lib.db.surreal import AsyncDbController
+from amt_nano.db.surreal import AsyncDbController
+
 from settings import logger
 
 

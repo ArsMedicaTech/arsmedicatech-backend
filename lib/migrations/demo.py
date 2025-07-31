@@ -3,7 +3,8 @@ Some demo code to create patients and encounters in the database.
 """
 from typing import Any, Dict
 
-from lib.db.surreal import DbController
+from amt_nano.db.surreal import DbController
+
 from lib.migrations.demo_utils import (EncounterFactory, PatientFactory,
                                        select_n_random_rows_from_csv)
 from lib.models.patient.main import store_encounter, store_patient

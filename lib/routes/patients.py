@@ -4,10 +4,11 @@ Patient routes for managing patient data and encounters.
 import json
 from typing import Any, Dict, List, Tuple, Union
 
+from amt_nano.db.surreal import DbController
+from amt_nano.services.icd_autocoder_service import ICDAutoCoderService
 from flask import Response, jsonify, request
 
 from lib.data_types import PatientID
-from lib.db.surreal import DbController
 from lib.models.patient.main import (create_encounter, create_patient,
                                      delete_encounter, delete_patient,
                                      get_all_encounters, get_all_patients,
@@ -18,7 +19,6 @@ from lib.models.patient.main import (create_encounter, create_patient,
                                      search_patient_history, serialize_patient,
                                      update_encounter, update_patient)
 from lib.services.auth_decorators import get_current_user
-from lib.services.icd_autocoder_service import ICDAutoCoderService
 from settings import logger
 
 
@@ -335,7 +335,7 @@ def get_cache_stats_route() -> Tuple[Response, int]:
     }
     """
     try:
-        from lib.services.cache_service import EntityCacheService
+        from amt_nano.services.cache_service import EntityCacheService
         db = DbController()
         stats = EntityCacheService.get_cache_stats(db)
         return jsonify(stats), 200

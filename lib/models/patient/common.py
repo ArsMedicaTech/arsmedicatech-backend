@@ -3,7 +3,8 @@ Common definitions for Patient and Encounter models in SurrealDB.
 """
 from typing import Any, Dict, List
 
-from lib.db.surreal import DbController
+from amt_nano.db.surreal import DbController
+
 from lib.models.patient.encounter_model import Encounter
 from lib.models.patient.patient_model import Patient
 

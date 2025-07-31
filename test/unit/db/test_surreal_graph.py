@@ -1,14 +1,17 @@
 """
+# TODO: Move to `arsmedicatech-nanoservices` repo.
+
 Unit tests for surreal_graph module.
 
 Tests the GraphController and AsyncGraphController classes for graph operations
 in SurrealDB, including relationship creation, querying, and edge cases.
 """
 
-import pytest
 import asyncio
-from unittest.mock import Mock, AsyncMock, patch
-from lib.db.surreal_graph import GraphController, AsyncGraphController
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+from amt_nano.db.surreal_graph import AsyncGraphController, GraphController
 
 
 # Module-level fixtures that can be used across all test classes
@@ -44,7 +47,7 @@ class TestGraphController:
 
     def test_init_with_async_db_controller(self):
         """Test GraphController initialization with async database controller."""
-        from lib.db.surreal import AsyncDbController
+        from amt_nano.db.surreal import AsyncDbController
         mock_async_db = Mock(spec=AsyncDbController)
         # Mock the query method to have __await__ attribute
         mock_async_db.query.__await__ = Mock()
