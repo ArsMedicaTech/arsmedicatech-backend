@@ -976,6 +976,30 @@ def remove_clinic_from_organization(org_id: str) -> Tuple[Response, int]:
     from lib.routes.organizations import remove_clinic_from_organization_route
     return remove_clinic_from_organization_route(org_id)
 
+@app.route('/api/education/<topic>', methods=['GET'])
+def get_education_content(topic: str) -> Tuple[Response, int]:
+    """
+    Get educational content for a specific topic.
+    :param topic: The topic to retrieve educational content for.
+    :return: Response object with educational content data.
+    """
+    #from lib.routes.education import get_education_content_route
+    #return get_education_content_route(topic)
+    return jsonify({
+        "title": "3D Anatomical Visualization",
+        "url": "https://www.darrenmackenzie.com/threejs/multiaxis_fullscreen",
+        "type": "3d_visualization",
+        "category": "Anatomy",
+        "informationCard": {
+            "description": "Explore the human body in 3D with detailed anatomical models.",
+            "features": [
+                {"title": "Interactive Models", "description": "Rotate and zoom in on 3D models."},
+            ]
+        },
+        "createdAt": "2023-10-01T12:00:00Z",
+        "updatedAt": "2023-10-01T12:00:00Z"
+    }), 200
+
 
 # User Notes endpoints
 @app.route('/api/user-notes', methods=['GET'])
