@@ -3,9 +3,9 @@ Administration routes for managing organizations, clinics, patients, providers, 
 """
 from typing import List, Tuple
 
+from amt_nano.db.surreal import DbController
 from flask import Response, g, jsonify
 
-from lib.db.surreal import DbController
 from lib.models.clinic import ClinicType
 from lib.services.admin_service import AdminService
 from lib.services.auth_decorators import require_auth

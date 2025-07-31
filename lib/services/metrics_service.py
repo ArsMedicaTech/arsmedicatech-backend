@@ -3,7 +3,8 @@ Service for handling user health metrics (KPI) persistence and retrieval using S
 """
 from typing import Any, Dict, List
 
-from lib.db.surreal import DbController
+from amt_nano.db.surreal import DbController
+
 from lib.models.metrics import Metric, MetricSet
 
 # Initialize DB controller (ensure connect is called once at startup)

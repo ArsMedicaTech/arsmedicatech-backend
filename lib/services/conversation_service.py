@@ -3,7 +3,8 @@ Conversation Service
 """
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from lib.db.surreal import DbController
+from amt_nano.db.surreal import DbController
+
 from lib.models.conversation import Conversation, Message
 from settings import logger
 

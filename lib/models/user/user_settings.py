@@ -4,7 +4,8 @@ User Settings Model
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from lib.services.encryption import get_encryption_service
+from amt_nano.services.encryption import get_encryption_service
+
 from settings import logger
 
 

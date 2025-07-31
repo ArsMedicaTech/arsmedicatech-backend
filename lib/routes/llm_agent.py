@@ -56,13 +56,16 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             # Add user message to persistent chat
             chat = llm_chat_service.add_message(UserID(current_user_id), assistant_id, 'Me', prompt)
 
-            agent = asyncio.run(
-                LLMAgent.from_mcp(
-                    mcp_url=MCP_URL,
-                    api_key=openai_api_key,
-                    model=LLMModel.GPT_4_1_NANO,
+            if using_v2:
+                ...
+            else:
+                agent = asyncio.run(
+                    LLMAgent.from_mcp(
+                        mcp_url=MCP_URL,
+                        api_key=openai_api_key,
+                        model=LLMModel.GPT_4_1_NANO,
+                    )
                 )
-            )
 
             # Use the persistent chat history as context
             history: list[Dict[str, Any]] = chat.messages

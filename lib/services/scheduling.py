@@ -4,16 +4,12 @@ Scheduling service for managing appointments
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from lib.events import (
-    AppointmentCreated,
-    AppointmentUpdated,
-    AppointmentCancelled,
-    AppointmentConfirmed,
-    AppointmentCompleted
-)
-from lib.infra.event_bus import event_bus
+from amt_nano.db.surreal import DbController
 
-from lib.db.surreal import DbController
+from lib.events import (AppointmentCancelled, AppointmentCompleted,
+                        AppointmentConfirmed, AppointmentCreated,
+                        AppointmentUpdated)
+from lib.infra.event_bus import event_bus
 from lib.models.appointment import Appointment, AppointmentStatus
 from settings import logger
 

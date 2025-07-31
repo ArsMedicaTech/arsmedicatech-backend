@@ -4,12 +4,12 @@ Optimal table route.
 
 from typing import Tuple
 
+from amt_nano.services.optimal import OptimalService
 from flask import Response, jsonify, request
 
 from lib.opt.hypertension import main
-from lib.services.optimal import OptimalService
-from lib.services.user_service import UserService
 from lib.services.auth_decorators import get_current_user_id
+from lib.services.user_service import UserService
 from settings import OPTIMAL_URL, logger
 
 
