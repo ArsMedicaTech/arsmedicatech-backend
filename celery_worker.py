@@ -5,9 +5,7 @@ import os
 
 from celery import Celery  # type: ignore
 
-from settings import REDIS_HOST, REDIS_PORT, UPLOADS_CHANNEL
-
-from settings import logger
+from settings import REDIS_HOST, REDIS_PORT, UPLOADS_CHANNEL, logger
 
 # You can set these in your .env or settings.py
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/{UPLOADS_CHANNEL}")

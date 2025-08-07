@@ -1,11 +1,11 @@
 """"""
+import socket
+import ssl
+from datetime import datetime
+from pprint import pprint
+
 from settings import logger
 
-
-import ssl
-import socket
-from pprint import pprint
-from datetime import datetime
 
 def fetch_cert(hostname, port=443):
     context = ssl.create_default_context()

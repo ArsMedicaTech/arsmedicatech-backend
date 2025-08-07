@@ -6,11 +6,9 @@ This script provides convenient commands to run different types of tests
 with various options and configurations.
 """
 
-import sys
-import subprocess
 import argparse
-import os
-from pathlib import Path
+import subprocess
+import sys
 
 
 def run_command(cmd, description=""):
