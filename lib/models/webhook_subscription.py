@@ -102,4 +102,26 @@ class WebhookSubscription:
             import traceback
             print(f"[WebhookSubscription.from_dict] Error parsing: {data}\nException: {e}")
             traceback.print_exc()
-            raise 
+            raise
+    
+    @staticmethod
+    def schema() -> str:
+        """
+        Return the schema definition for the WebhookSubscription model
+        
+        :return: Schema definition string
+        """
+        return """
+        DEFINE TABLE webhook_subscription SCHEMAFULL;
+        
+        DEFINE FIELD event_name ON webhook_subscription TYPE string;
+        DEFINE FIELD target_url ON webhook_subscription TYPE string;
+        DEFINE FIELD secret ON webhook_subscription TYPE string;
+        DEFINE FIELD enabled ON webhook_subscription TYPE bool DEFAULT true;
+        DEFINE FIELD created_at ON webhook_subscription TYPE datetime DEFAULT time::now();
+        DEFINE FIELD updated_at ON webhook_subscription TYPE datetime DEFAULT time::now();
+        
+        DEFINE INDEX idx_event_name ON webhook_subscription COLUMNS event_name;
+        DEFINE INDEX idx_enabled ON webhook_subscription COLUMNS enabled;
+        DEFINE INDEX idx_created_at ON webhook_subscription COLUMNS created_at;
+        """

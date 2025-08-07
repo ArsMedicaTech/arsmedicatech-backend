@@ -231,4 +231,32 @@ class UserSettings:
         if len(api_key) > 100:
             return False, "Optimal API key appears to be too long"
         
-        return True, "" 
+        return True, ""
+    
+    @staticmethod
+    def schema() -> str:
+        """
+        Return the schema definition for the UserSettings model
+        
+        :return: Schema definition string
+        """
+        return """
+        -- Define UserSettings table
+        DEFINE TABLE UserSettings SCHEMAFULL;
+        
+        -- Define fields
+        DEFINE FIELD user_id ON UserSettings TYPE string;
+        DEFINE FIELD openai_api_key ON UserSettings TYPE string;
+        DEFINE FIELD created_at ON UserSettings TYPE string;
+        DEFINE FIELD updated_at ON UserSettings TYPE string;
+        
+        -- Define indexes
+        DEFINE INDEX idx_user_id ON UserSettings FIELDS user_id;
+        
+        -- Define permissions (only authenticated users can access their own settings)
+        DEFINE TABLE UserSettings PERMISSIONS 
+            FOR select WHERE auth.id = user_id
+            FOR create WHERE auth.id = user_id
+            FOR update WHERE auth.id = user_id
+            FOR delete WHERE auth.id = user_id;
+        """

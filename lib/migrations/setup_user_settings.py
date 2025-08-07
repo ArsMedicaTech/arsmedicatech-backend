@@ -31,28 +31,8 @@ def setup_user_settings_schema() -> bool:
         db.connect()
         
         # Define UserSettings table schema
-        schema_definition = f"""
-        -- Switch to namespace and database
-        USE ns {SURREALDB_NAMESPACE} DB {SURREALDB_DATABASE};
+        schema_definition = """
         
-        -- Define UserSettings table
-        DEFINE TABLE UserSettings SCHEMAFULL;
-        
-        -- Define fields
-        DEFINE FIELD user_id ON UserSettings TYPE string;
-        DEFINE FIELD openai_api_key ON UserSettings TYPE string;
-        DEFINE FIELD created_at ON UserSettings TYPE string;
-        DEFINE FIELD updated_at ON UserSettings TYPE string;
-        
-        -- Define indexes
-        DEFINE INDEX idx_user_id ON UserSettings FIELDS user_id;
-        
-        -- Define permissions (only authenticated users can access their own settings)
-        DEFINE TABLE UserSettings PERMISSIONS 
-            FOR select WHERE auth.id = user_id
-            FOR create WHERE auth.id = user_id
-            FOR update WHERE auth.id = user_id
-            FOR delete WHERE auth.id = user_id;
         """
         
         logger.debug("📝 Executing schema definition...")

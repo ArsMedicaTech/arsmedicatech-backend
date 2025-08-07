@@ -17,22 +17,6 @@ def setup_webhook_subscriptions_table():
         # Create webhook_subscription table
         logger.info("Creating webhook_subscription table...")
         
-        # Define the table schema
-        schema_query = """
-        DEFINE TABLE webhook_subscription SCHEMAFULL;
-        
-        DEFINE FIELD event_name ON webhook_subscription TYPE string;
-        DEFINE FIELD target_url ON webhook_subscription TYPE string;
-        DEFINE FIELD secret ON webhook_subscription TYPE string;
-        DEFINE FIELD enabled ON webhook_subscription TYPE bool DEFAULT true;
-        DEFINE FIELD created_at ON webhook_subscription TYPE datetime DEFAULT time::now();
-        DEFINE FIELD updated_at ON webhook_subscription TYPE datetime DEFAULT time::now();
-        
-        DEFINE INDEX idx_event_name ON webhook_subscription COLUMNS event_name;
-        DEFINE INDEX idx_enabled ON webhook_subscription COLUMNS enabled;
-        DEFINE INDEX idx_created_at ON webhook_subscription COLUMNS created_at;
-        """
-        
         result = db.query(schema_query, {})
         logger.info(f"Schema creation result: {result}")
         
