@@ -1,6 +1,7 @@
 """
 Placeholder data generation functions for testing purposes
 """
+
 from typing import Union
 
 from amt_nano.db.surreal import AsyncDbController, DbController
@@ -11,7 +12,9 @@ from lib.models.patient.patient_crud import store_patient
 from lib.models.patient.patient_model import Patient
 
 
-def add_some_placeholder_encounters(db: Union[DbController, AsyncDbController], patient_id: str) -> None:
+def add_some_placeholder_encounters(
+    db: Union[DbController, AsyncDbController], patient_id: str
+) -> None:
     """
     Adds some placeholder encounters for testing purposes.
 
@@ -30,7 +33,13 @@ def add_some_placeholder_encounters(db: Union[DbController, AsyncDbController], 
         note_text = f"This is a placeholder note text for encounter {i+1}."
         diagnostic_codes = [f"code-{random.randint(100, 999)}"]
 
-        encounter = Encounter(str(note_id), date_created.isoformat(), provider_id, additional_notes=note_text, diagnostic_codes=diagnostic_codes)
+        encounter = Encounter(
+            str(note_id),
+            date_created.isoformat(),
+            provider_id,
+            additional_notes=note_text,
+            diagnostic_codes=diagnostic_codes,
+        )
         store_encounter(db, encounter, patient_id)
 
 
@@ -48,9 +57,13 @@ def add_some_placeholder_patients(db: Union[DbController, AsyncDbController]) ->
         demographic_no = random.randint(100, 999)
         first_name = f"FirstName{i+1}"
         last_name = f"LastName{i+1}"
-        date_of_birth = datetime.now().replace(year=datetime.now().year - random.randint(20, 60)).isoformat()
+        date_of_birth = (
+            datetime.now()
+            .replace(year=datetime.now().year - random.randint(20, 60))
+            .isoformat()
+        )
         location = (f"City{i+1}", f"State{i+1}", f"Country{i+1}", f"ZipCode{i+1}")
-        sex = 'r' if random.choice([True, False]) else 'm'  # Randomly assign 'r' or 'm'
+        sex = "r" if random.choice([True, False]) else "m"  # Randomly assign 'r' or 'm'
         phone = f"555-01{i+1:02d}{random.randint(1000, 9999)}"
         email = "patient1@gmail.com"
 
@@ -62,7 +75,7 @@ def add_some_placeholder_patients(db: Union[DbController, AsyncDbController]) ->
             location=location,
             sex=sex,
             phone=phone,
-            email=email
+            email=email,
         )
 
         # Store the patient in the database

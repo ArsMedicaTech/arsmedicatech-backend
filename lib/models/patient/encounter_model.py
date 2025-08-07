@@ -1,6 +1,7 @@
 """
 Encounter Model and SOAPNotes for SurrealDB.
 """
+
 from typing import Any, Dict, List, Optional
 
 
@@ -8,7 +9,10 @@ class SOAPNotes:
     """
     Represents SOAP notes for an encounter.
     """
-    def __init__(self, subjective: str, objective: str, assessment: str, plan: str) -> None:
+
+    def __init__(
+        self, subjective: str, objective: str, assessment: str, plan: str
+    ) -> None:
         """
         Initializes a SOAPNotes instance.
         :param subjective: Subjective observations from the patient.
@@ -31,21 +35,21 @@ class SOAPNotes:
             subjective=self.subjective,
             objective=self.objective,
             assessment=self.assessment,
-            plan=self.plan
+            plan=self.plan,
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'SOAPNotes':
+    def from_dict(cls, data: Dict[str, Any]) -> "SOAPNotes":
         """
         Creates a SOAPNotes instance from a dictionary.
         :param data: dict containing SOAP notes fields.
         :return: SOAPNotes instance
         """
         return cls(
-            subjective=str(data.get('subjective') or ""),
-            objective=str(data.get('objective') or ""),
-            assessment=str(data.get('assessment') or ""),
-            plan=str(data.get('plan') or "")
+            subjective=str(data.get("subjective") or ""),
+            objective=str(data.get("objective") or ""),
+            assessment=str(data.get("assessment") or ""),
+            plan=str(data.get("plan") or ""),
         )
 
 
@@ -53,14 +57,15 @@ class Encounter:
     """
     Represents an encounter note in the system.
     """
+
     def __init__(
-            self,
-            note_id: str,
-            date_created: str,
-            provider_id: str,
-            soap_notes: Optional[SOAPNotes] = None,
-            additional_notes: Optional[str] = None,
-            diagnostic_codes: Optional[List[str]] = None
+        self,
+        note_id: str,
+        date_created: str,
+        provider_id: str,
+        soap_notes: Optional[SOAPNotes] = None,
+        additional_notes: Optional[str] = None,
+        diagnostic_codes: Optional[List[str]] = None,
     ) -> None:
         """
         Initializes an Encounter instance.
@@ -92,30 +97,40 @@ class Encounter:
 
         # Define a standard analyzer for medical text.
         # It splits text into words and converts them to a common format (lowercase, basic characters).
-        statements.append("""
+        statements.append(
+            """
             DEFINE ANALYZER medical_text_analyzer 
             TOKENIZERS class 
             FILTERS lowercase, ascii;
-        """)
+        """
+        )
 
-        statements.append('DEFINE TABLE encounter SCHEMAFULL;')
-        statements.append('DEFINE FIELD note_id ON encounter TYPE string ASSERT $value != none;')
-        statements.append('DEFINE FIELD date_created ON encounter TYPE string;')
-        statements.append('DEFINE FIELD provider_id ON encounter TYPE string;')
-        statements.append('DEFINE FIELD note_text ON encounter TYPE any;')
-        statements.append('DEFINE FIELD note_type ON encounter TYPE string;')
-        statements.append('DEFINE FIELD diagnostic_codes ON encounter TYPE array;')
+        statements.append("DEFINE TABLE encounter SCHEMAFULL;")
+        statements.append(
+            "DEFINE FIELD note_id ON encounter TYPE string ASSERT $value != none;"
+        )
+        statements.append("DEFINE FIELD date_created ON encounter TYPE string;")
+        statements.append("DEFINE FIELD provider_id ON encounter TYPE string;")
+        statements.append("DEFINE FIELD note_text ON encounter TYPE any;")
+        statements.append("DEFINE FIELD note_type ON encounter TYPE string;")
+        statements.append("DEFINE FIELD diagnostic_codes ON encounter TYPE array;")
 
-        statements.append('DEFINE FIELD patient ON encounter TYPE record<patient> ASSERT $value != none;')
+        statements.append(
+            "DEFINE FIELD patient ON encounter TYPE record<patient> ASSERT $value != none;"
+        )
 
         # This index is specifically for full-text search on the 'note_text' field.
         # It uses our custom analyzer and enables relevance scoring (BM25) and highlighting.
-        statements.append("""
+        statements.append(
+            """
             DEFINE INDEX idx_encounter_notes ON TABLE encounter 
             FIELDS note_text 
             SEARCH ANALYZER medical_text_analyzer BM25 HIGHLIGHTS;
-        """)
+        """
+        )
 
-        statements.append('DEFINE INDEX idx_encounter_note_id ON encounter FIELDS note_id UNIQUE;')
+        statements.append(
+            "DEFINE INDEX idx_encounter_note_id ON encounter FIELDS note_id UNIQUE;"
+        )
 
         return statements

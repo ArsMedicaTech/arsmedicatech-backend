@@ -1,15 +1,17 @@
 """
 Video transcription Celery task service.
 """
-import os, tempfile, subprocess, pathlib
 
-import boto3 # type: ignore
+import os
+import subprocess
+import tempfile
+
+import boto3  # type: ignore
+import whisper  # type: ignore
+from celery import shared_task  # type: ignore
+
 # or minio
 
-import whisper # type: ignore
-
-from celery import shared_task # type: ignore
-from settings import logger
 
 s3 = boto3.client(
     "s3",
@@ -40,8 +42,19 @@ def transcribe_video_task(self, s3_uri: str, room: str, duration: float):
 
         # 2. ffmpeg – 16 kHz mono wav (Whisper likes 16- or 32-bit PCM)
         subprocess.run(
-            ["ffmpeg", "-nostdin", "-i", mp4_path,
-             "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-i",
+                mp4_path,
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-f",
+                "wav",
+                wav_path,
+            ],
             check=True,
         )
 
@@ -53,7 +66,7 @@ def transcribe_video_task(self, s3_uri: str, room: str, duration: float):
 
         # 4. upload
         out_bucket = os.getenv("TRANSCRIPT_BUCKET", bucket)
-        out_key    = key.replace("recordings/", "transcripts/").rsplit(".", 1)[0] + ".txt"
+        out_key = key.replace("recordings/", "transcripts/").rsplit(".", 1)[0] + ".txt"
         s3.upload_file(txt_path, out_bucket, out_key)
 
         return {"out": f"s3://{out_bucket}/{out_key}", "duration": duration}

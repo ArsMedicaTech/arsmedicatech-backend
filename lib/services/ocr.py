@@ -1,16 +1,19 @@
 """
 OCR service for calling AWS Textract.
 """
-from typing import List, Dict, Any, Tuple
 
-import boto3 # type: ignore
+from typing import Any, Dict, List, Tuple
+
+import boto3  # type: ignore
 from werkzeug.datastructures import FileStorage
 
-from settings import BUCKET_NAME, TEXTRACT_AWS_ACCESS_KEY_ID, TEXTRACT_AWS_SECRET_ACCESS_KEY
-from settings import logger
+from settings import (
+    BUCKET_NAME,
+    TEXTRACT_AWS_ACCESS_KEY_ID,
+    TEXTRACT_AWS_SECRET_ACCESS_KEY,
+    logger,
+)
 
-
-import json
 
 def extract_text_from_blocks(blocks: List[Dict[str, Any]]) -> str:
     """
@@ -18,7 +21,9 @@ def extract_text_from_blocks(blocks: List[Dict[str, Any]]) -> str:
     Only extracts LINE-level text in reading order.
     """
     # Filter only blocks of type 'LINE'
-    line_blocks: List[Dict[str, Any]] = [b for b in blocks if b.get("BlockType") == "LINE" and "Text" in b]
+    line_blocks: List[Dict[str, Any]] = [
+        b for b in blocks if b.get("BlockType") == "LINE" and "Text" in b
+    ]
 
     # Sort by top position, then by left to approximate reading order
     def sort_key(block: Dict[str, Any]) -> Tuple[float, float]:
@@ -37,17 +42,17 @@ def extract_text_from_blocks(blocks: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-
 class OCRService:
     """
     A service for performing OCR using AWS Textract.
     """
+
     def __init__(self, bucket_name: str = BUCKET_NAME) -> None:
         """
         Initializes the OCRService with a Textract client.
         """
         self.client = boto3.client(
-            'textract',
+            "textract",
             aws_access_key_id=TEXTRACT_AWS_ACCESS_KEY_ID,
             aws_secret_access_key=TEXTRACT_AWS_SECRET_ACCESS_KEY,
         )
@@ -59,9 +64,11 @@ class OCRService:
         :param image_path: str - Path to the image file.
         :return: list - List of detected text blocks.
         """
-        with open(image_path, 'rb') as image:
-            response = self.client.detect_document_text(Document={'Bytes': image.read()})
-            return response['Blocks']
+        with open(image_path, "rb") as image:
+            response = self.client.detect_document_text(
+                Document={"Bytes": image.read()}
+            )
+            return response["Blocks"]
 
     def get_text(self, blocks: List[Dict[str, Any]]) -> str:
         """
@@ -69,7 +76,9 @@ class OCRService:
         :param blocks: List[Dict[str, Any]] - List of blocks containing text.
         :return: str - Concatenated text from all LINE blocks.
         """
-        return '\n'.join([block['Text'] for block in blocks if block['BlockType'] == 'LINE'])
+        return "\n".join(
+            [block["Text"] for block in blocks if block["BlockType"] == "LINE"]
+        )
 
     def get_text_from_image(self, image_path: str) -> str:
         """
@@ -79,16 +88,16 @@ class OCRService:
         """
         blocks = self.ocr(image_path)
         return self.get_text(blocks)
-    
+
     def get_text_from_pdf(self, pdf_path: str) -> str:
         """
         Get text from a PDF file using AWS Textract.
         :param pdf_path: str - Path to the PDF file.
         :return: str - Extracted text from the PDF.
         """
-        with open(pdf_path, 'rb') as pdf:
-            response = self.client.detect_document_text(Document={'Bytes': pdf.read()})
-            return response['Blocks']
+        with open(pdf_path, "rb") as pdf:
+            response = self.client.detect_document_text(Document={"Bytes": pdf.read()})
+            return response["Blocks"]
 
     def get_text_from_pdf_file(self, pdf_file: FileStorage) -> str:
         """
@@ -109,22 +118,25 @@ class OCRService:
         """
         # Start async job
         response: Dict[str, Any] = self.client.start_document_text_detection(
-            DocumentLocation={'S3Object': {'Bucket': self.bucket_name, 'Name': pdf_key}}
+            DocumentLocation={"S3Object": {"Bucket": self.bucket_name, "Name": pdf_key}}
         )
-        job_id: str = response['JobId']
+        job_id: str = response["JobId"]
 
         # Poll for job completion
         import time
+
         while True:
-            result: Dict[str, Any] = self.client.get_document_text_detection(JobId=job_id)
-            status: str = result['JobStatus']
+            result: Dict[str, Any] = self.client.get_document_text_detection(
+                JobId=job_id
+            )
+            status: str = result["JobStatus"]
             logger.warning(f"Textract job status: {status}")
-            if status in ['SUCCEEDED', 'FAILED']:
+            if status in ["SUCCEEDED", "FAILED"]:
                 break
             time.sleep(2)
 
-        if status == 'SUCCEEDED':
-            blocks: List[Dict[str, Any]] = result['Blocks']
+        if status == "SUCCEEDED":
+            blocks: List[Dict[str, Any]] = result["Blocks"]
             logger.warning(f"Textract job completed: {len(blocks)} blocks")
             return extract_text_from_blocks(blocks)
         else:
@@ -139,12 +151,13 @@ class OCRService:
         :return: str - Extracted text from the image.
         """
         response = self.client.detect_document_text(
-            Document={'S3Object': {'Bucket': self.bucket_name, 'Name': image_key}})
+            Document={"S3Object": {"Bucket": self.bucket_name, "Name": image_key}}
+        )
 
-        blocks = response['Blocks']
+        blocks = response["Blocks"]
         return self.get_text(blocks)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ocr_service = OCRService()
-    print(ocr_service.get_text_from_image('test.png'))
+    print(ocr_service.get_text_from_image("test.png"))

@@ -1,13 +1,18 @@
 """
 Testing routes for CRUD operations and database interactions.
 """
+
 from typing import Any, Dict, Tuple
 
 from amt_nano.db.surreal import DbController
 from flask import Response, jsonify, request, session
 
-from lib.models.patient.patient_crud import (create_patient, delete_patient,
-                                             get_patient_by_id, update_patient)
+from lib.models.patient.patient_crud import (
+    create_patient,
+    delete_patient,
+    get_patient_by_id,
+    update_patient,
+)
 from lib.models.patient.placeholders import add_some_placeholder_patients
 from settings import logger
 
@@ -24,7 +29,7 @@ def test_surrealdb_route() -> Tuple[Response, int]:
 
     add_some_placeholder_patients(db)
 
-    results = db.select_many('patient')
+    results = db.select_many("patient")
     logger.info("RESULTS: " + str(results))
     return jsonify({"message": "Test completed."}), 200
 
@@ -43,14 +48,14 @@ def test_crud_route() -> Tuple[Response, int]:
             "sex": "M",
             "phone": "555-1234",
             "email": "test@example.com",
-            "location": ["Test City", "Test State", "Test Country", "12345"]
+            "location": ["Test City", "Test State", "Test Country", "12345"],
         }
 
         created_patient = create_patient(test_patient_data)
         if not created_patient:
             return jsonify({"error": "Failed to create patient"}), 500
 
-        patient_id = created_patient.get('demographic_no')
+        patient_id = created_patient.get("demographic_no")
         patient_id_str = str(patient_id) if patient_id is not None else ""
 
         # Test reading the patient
@@ -69,17 +74,23 @@ def test_crud_route() -> Tuple[Response, int]:
         if not delete_result:
             return jsonify({"error": "Failed to delete patient"}), 500
 
-        return jsonify({
-            "message": "CRUD operations test completed successfully",
-            "created": created_patient,
-            "read": read_patient,
-            "updated": updated_patient,
-            "deleted": delete_result
-        }), 200
+        return (
+            jsonify(
+                {
+                    "message": "CRUD operations test completed successfully",
+                    "created": created_patient,
+                    "read": read_patient,
+                    "updated": updated_patient,
+                    "deleted": delete_result,
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         logger.error(f"CRUD test failed: {e}")
         return jsonify({"error": f"CRUD test failed: {str(e)}"}), 500
+
 
 def debug_session_route() -> Tuple[Response, int]:
     """
@@ -89,7 +100,4 @@ def debug_session_route() -> Tuple[Response, int]:
     """
     logger.debug(f"Session data: {dict(session)}")
     logger.debug(f"Request headers: {dict(request.headers)}")
-    return jsonify({
-        "session": dict(session),
-        "headers": dict(request.headers)
-    }), 200
+    return jsonify({"session": dict(session), "headers": dict(request.headers)}), 200

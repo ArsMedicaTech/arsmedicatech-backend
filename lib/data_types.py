@@ -2,6 +2,7 @@
 Type definitions for the application.
 """
 
+
 class UserID(str):
     """
     Custom UserID type for better type safety.
@@ -9,6 +10,7 @@ class UserID(str):
 
     Format: `User:{user_id}`
     """
+
     pass
 
 
@@ -19,6 +21,7 @@ class PatientID(str):
 
     Format: `Patient:{patient_id}`
     """
+
     pass
 
 
@@ -26,7 +29,15 @@ class EventData:
     """
     Custom EventData type for better type safety.
     """
-    def __init__(self, event_type: str, conversation_id: str, sender: str, text: str, timestamp: str) -> None:
+
+    def __init__(
+        self,
+        event_type: str,
+        conversation_id: str,
+        sender: str,
+        text: str,
+        timestamp: str,
+    ) -> None:
         """
         Initialize an EventData instance.
         """
