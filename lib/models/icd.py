@@ -7,10 +7,15 @@ from typing import Any, Dict, List
 
 from amt_nano.db.surreal import AsyncSurrealWrapper
 from amt_nano.services.apis import ICD10Code
-from surrealdb import AsyncSurreal  # type: ignore
 
-from settings import (SURREALDB_ICD_DB, SURREALDB_NAMESPACE, SURREALDB_PASS,
-                      SURREALDB_URL, SURREALDB_USER, logger)
+from settings import (
+    SURREALDB_ICD_DB,
+    SURREALDB_NAMESPACE,
+    SURREALDB_PASS,
+    SURREALDB_URL,
+    SURREALDB_USER,
+    logger,
+)
 
 
 async def import_icd_codes(csv_file_path: str) -> None:

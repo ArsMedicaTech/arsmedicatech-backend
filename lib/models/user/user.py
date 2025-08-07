@@ -98,7 +98,7 @@ class User:
         :return: True if password matches, False otherwise
         """
         if not self.password_hash:
-            logger.debug(f"No password hash stored for user")
+            logger.debug("No password hash stored for user")
             return False
         
         try:

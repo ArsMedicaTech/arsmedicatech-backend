@@ -3,8 +3,17 @@ LLM Agent Module
 """
 import enum
 import json
-from typing import (Any, Callable, Collection, Dict, List, Optional, Sequence,
-                    Union, cast)
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Union,
+    cast,
+)
 
 from amt_nano.services.encryption import get_encryption_service
 from openai import OpenAI

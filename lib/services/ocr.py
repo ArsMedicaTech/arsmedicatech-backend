@@ -1,16 +1,18 @@
 """
 OCR service for calling AWS Textract.
 """
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Tuple
 
-import boto3 # type: ignore
+import boto3  # type: ignore
 from werkzeug.datastructures import FileStorage
 
-from settings import BUCKET_NAME, TEXTRACT_AWS_ACCESS_KEY_ID, TEXTRACT_AWS_SECRET_ACCESS_KEY
-from settings import logger
+from settings import (
+    BUCKET_NAME,
+    TEXTRACT_AWS_ACCESS_KEY_ID,
+    TEXTRACT_AWS_SECRET_ACCESS_KEY,
+    logger,
+)
 
-
-import json
 
 def extract_text_from_blocks(blocks: List[Dict[str, Any]]) -> str:
     """

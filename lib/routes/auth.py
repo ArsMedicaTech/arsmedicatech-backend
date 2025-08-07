@@ -8,12 +8,19 @@ from urllib import parse
 
 import jwt
 import requests
-from flask import Response, jsonify, redirect, request, session, url_for
+from flask import Response, jsonify, redirect, request, session
 from werkzeug.wrappers.response import Response as BaseResponse
 
 from lib.services.user_service import UserService
-from settings import (APP_URL, CLIENT_ID, CLIENT_SECRET, COGNITO_DOMAIN,
-                      LOGOUT_URI, REDIRECT_URI, logger)
+from settings import (
+    APP_URL,
+    CLIENT_ID,
+    CLIENT_SECRET,
+    COGNITO_DOMAIN,
+    LOGOUT_URI,
+    REDIRECT_URI,
+    logger,
+)
 
 
 def generate_safe_username(email: str, sub: str) -> str:

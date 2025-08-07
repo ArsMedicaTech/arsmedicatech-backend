@@ -10,83 +10,141 @@ from urllib.parse import quote, urlencode
 
 import sentry_sdk
 import werkzeug
-from amt_nano.services.lab_results import (LabResultsService,
-                                           differential_hematology,
-                                           general_chemistry, hematology,
-                                           serum_proteins)
-from flask import (Blueprint, Flask, Response, abort, jsonify, redirect,
-                   request, send_from_directory, session)
+from amt_nano.services.lab_results import (
+    LabResultsService,
+    differential_hematology,
+    general_chemistry,
+    hematology,
+    serum_proteins,
+)
+from flask import (
+    Blueprint,
+    Flask,
+    Response,
+    abort,
+    jsonify,
+    redirect,
+    request,
+    send_from_directory,
+    session,
+)
 from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.wrappers.response import Response as BaseResponse
 
 from lib.dummy_data import DUMMY_CONVERSATIONS
 from lib.event_handlers import register_event_handlers
-from lib.routes.administration import (get_administrators_route,
-                                       get_clinics_route,
-                                       get_organizations_route,
-                                       get_patients_route, get_providers_route)
-from lib.routes.api_keys import (create_api_key_route,
-                                 deactivate_api_key_route,
-                                 delete_api_key_route, get_api_key_usage_route,
-                                 list_api_keys_route)
-from lib.routes.appointments import (cancel_appointment_route,
-                                     confirm_appointment_route,
-                                     create_appointment_route,
-                                     get_appointment_route,
-                                     get_appointment_statuses_route,
-                                     get_appointment_types_route,
-                                     get_appointments_route,
-                                     get_available_slots_route,
-                                     update_appointment_route)
+from lib.routes.administration import (
+    get_administrators_route,
+    get_clinics_route,
+    get_organizations_route,
+    get_patients_route,
+    get_providers_route,
+)
+from lib.routes.api_keys import (
+    create_api_key_route,
+    deactivate_api_key_route,
+    delete_api_key_route,
+    get_api_key_usage_route,
+    list_api_keys_route,
+)
+from lib.routes.appointments import (
+    cancel_appointment_route,
+    confirm_appointment_route,
+    create_appointment_route,
+    get_appointment_route,
+    get_appointment_statuses_route,
+    get_appointment_types_route,
+    get_appointments_route,
+    get_available_slots_route,
+    update_appointment_route,
+)
 from lib.routes.auth import auth_logout_route, cognito_login_route
-from lib.routes.chat import (create_conversation_route,
-                             get_conversation_messages_route,
-                             get_user_conversations_route, send_message_route)
+from lib.routes.chat import (
+    create_conversation_route,
+    get_conversation_messages_route,
+    get_user_conversations_route,
+    send_message_route,
+)
 from lib.routes.llm_agent import llm_agent_endpoint_route
 from lib.routes.metrics import metrics_bp
 from lib.routes.optimal import call_optimal_route
 from lib.routes.organizations import get_organizations_route
-from lib.routes.patients import (create_encounter_route,
-                                 delete_encounter_route,
-                                 extract_entities_from_notes_route,
-                                 get_all_encounters_route,
-                                 get_cache_stats_route,
-                                 get_encounter_by_id_route,
-                                 get_encounters_by_patient_route,
-                                 patch_intake_route, patient_endpoint_route,
-                                 patients_endpoint_route,
-                                 search_encounters_route,
-                                 search_patients_route, update_encounter_route)
-from lib.routes.testing import (debug_session_route, test_crud_route,
-                                test_surrealdb_route)
+from lib.routes.patients import (
+    create_encounter_route,
+    delete_encounter_route,
+    extract_entities_from_notes_route,
+    get_all_encounters_route,
+    get_cache_stats_route,
+    get_encounter_by_id_route,
+    get_encounters_by_patient_route,
+    patch_intake_route,
+    patient_endpoint_route,
+    patients_endpoint_route,
+    search_encounters_route,
+    search_patients_route,
+    update_encounter_route,
+)
+from lib.routes.testing import (
+    debug_session_route,
+    test_crud_route,
+    test_surrealdb_route,
+)
 from lib.routes.uploads import uploads_bp
-from lib.routes.user_notes import (create_note_route, delete_note_route,
-                                   get_note_by_id_route, get_user_notes_route,
-                                   update_note_route)
-from lib.routes.users import (activate_user_route, change_password_route,
-                              check_users_exist_route, deactivate_user_route,
-                              get_all_users_route, get_api_usage_route,
-                              get_current_user_info_route,
-                              get_user_profile_route, login_route,
-                              logout_route, register_route, search_users_route,
-                              settings_route, setup_default_admin_route,
-                              update_user_profile_route)
-from lib.routes.webhooks import (create_webhook_subscription_route,
-                                 delete_webhook_subscription_route,
-                                 get_webhook_events_route,
-                                 get_webhook_subscription_route,
-                                 get_webhook_subscriptions_route,
-                                 update_webhook_subscription_route)
-from lib.services.auth_decorators import (optional_auth, require_admin,
-                                          require_api_key,
-                                          require_api_permission, require_auth)
+from lib.routes.user_notes import (
+    create_note_route,
+    delete_note_route,
+    get_note_by_id_route,
+    get_user_notes_route,
+    update_note_route,
+)
+from lib.routes.users import (
+    activate_user_route,
+    change_password_route,
+    check_users_exist_route,
+    deactivate_user_route,
+    get_all_users_route,
+    get_api_usage_route,
+    get_current_user_info_route,
+    get_user_profile_route,
+    login_route,
+    logout_route,
+    register_route,
+    search_users_route,
+    settings_route,
+    setup_default_admin_route,
+    update_user_profile_route,
+)
+from lib.routes.webhooks import (
+    create_webhook_subscription_route,
+    delete_webhook_subscription_route,
+    get_webhook_events_route,
+    get_webhook_subscription_route,
+    get_webhook_subscriptions_route,
+    update_webhook_subscription_route,
+)
+from lib.services.auth_decorators import (
+    optional_auth,
+    require_admin,
+    require_api_key,
+    require_api_permission,
+    require_auth,
+)
 from lib.services.notifications import publish_event_with_buffer
 from lib.services.redis_client import get_redis_connection
 from lib.services.user_service import UserNotAffiliatedError, UserService
-from settings import (APP_URL, CLIENT_ID, COGNITO_DOMAIN, DEBUG,
-                      FLASK_SECRET_KEY, HOST, PORT, REDIRECT_URI, SENTRY_DSN,
-                      logger)
+from settings import (
+    APP_URL,
+    CLIENT_ID,
+    COGNITO_DOMAIN,
+    DEBUG,
+    FLASK_SECRET_KEY,
+    HOST,
+    PORT,
+    REDIRECT_URI,
+    SENTRY_DSN,
+    logger,
+)
 
 #from flask_jwt_extended import jwt_required, get_jwt_identity
 
@@ -916,8 +974,7 @@ def get_organization(org_id: str) -> Union[Tuple[Response, int], werkzeug.wrappe
 
         # Only allow alphanumeric, underscore, dash
         if re.fullmatch(r'[\w-]+', org_id):
-            from lib.routes.organizations import \
-                get_organization_by_user_id_route
+            from lib.routes.organizations import get_organization_by_user_id_route
             return get_organization_by_user_id_route(org_id)
         else:
             # Invalid org_id, abort with 400 Bad Request
@@ -1131,7 +1188,7 @@ def is_plugin_frontend_only(manifest: Dict[str, Any]) -> bool:
     :param manifest: The plugin manifest dictionary.
     :return: True if frontend only, False otherwise.
     """
-    if 'main_js' in manifest and not 'main_py' in manifest:
+    if 'main_js' in manifest and 'main_py' not in manifest:
         return True
     return False
 
@@ -1199,9 +1256,7 @@ def get_plugins():
 
 @app.route('/plugin/<plugin_name>', methods=['GET'])
 def serve_plugin_js(plugin_name: str) -> Tuple[Response, int]:
-    import os
     import re
-    from pathlib import Path
 
     from werkzeug.utils import secure_filename
 

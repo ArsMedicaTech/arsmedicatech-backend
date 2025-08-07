@@ -6,8 +6,12 @@ from typing import Any, Dict, Tuple
 from amt_nano.db.surreal import DbController
 from flask import Response, jsonify, request, session
 
-from lib.models.patient.patient_crud import (create_patient, delete_patient,
-                                             get_patient_by_id, update_patient)
+from lib.models.patient.patient_crud import (
+    create_patient,
+    delete_patient,
+    get_patient_by_id,
+    update_patient,
+)
 from lib.models.patient.placeholders import add_some_placeholder_patients
 from settings import logger
 

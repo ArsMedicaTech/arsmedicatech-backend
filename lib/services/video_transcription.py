@@ -1,15 +1,17 @@
 """
 Video transcription Celery task service.
 """
-import os, tempfile, subprocess, pathlib
+import os
+import subprocess
+import tempfile
 
-import boto3 # type: ignore
+import boto3  # type: ignore
+import whisper  # type: ignore
+from celery import shared_task  # type: ignore
+
 # or minio
 
-import whisper # type: ignore
 
-from celery import shared_task # type: ignore
-from settings import logger
 
 s3 = boto3.client(
     "s3",

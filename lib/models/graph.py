@@ -6,8 +6,13 @@ from typing import Any, Dict, List
 from amt_nano.db.surreal import DbController
 from amt_nano.db.surreal_graph import GraphController
 
-from settings import (SURREALDB_NAMESPACE, SURREALDB_PASS, SURREALDB_URL,
-                      SURREALDB_USER, logger)
+from settings import (
+    SURREALDB_NAMESPACE,
+    SURREALDB_PASS,
+    SURREALDB_URL,
+    SURREALDB_USER,
+    logger,
+)
 
 '''
 [AMT-011]: Graph Schema for SurrealDB

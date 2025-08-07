@@ -1,8 +1,9 @@
 """
 Service for handling file uploads and processing tasks using Celery.
 """
-from celery import shared_task # type: ignore
-from lib.models.upload import Upload, UploadStatus, update_upload_status
+from celery import shared_task  # type: ignore
+
+from lib.models.upload import UploadStatus, update_upload_status
 from lib.services.ocr import OCRService
 from settings import logger
 

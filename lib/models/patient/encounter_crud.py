@@ -10,8 +10,9 @@ from surrealdb import RecordID  # type: ignore[import-untyped]
 
 from lib.models.patient.common import EncounterDict, PatientDict
 from lib.models.patient.encounter_model import Encounter, SOAPNotes
-from lib.models.patient.patient_crud import \
-    serialize_patient  # type: ignore[import-untyped]
+from lib.models.patient.patient_crud import (
+    serialize_patient,  # type: ignore[import-untyped]
+)
 from settings import logger
 
 

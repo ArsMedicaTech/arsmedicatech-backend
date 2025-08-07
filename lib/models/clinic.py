@@ -247,7 +247,7 @@ if __name__ == '__main__':
     search_point_lon = -118.41
     search_point_lat = 34.08
     logger.debug(f"SELECT name, address, location, geo::distance(location, ({search_point_lon}, {search_point_lat})) AS distance")
-    logger.debug(f"FROM clinic")
+    logger.debug("FROM clinic")
     logger.debug(f"WHERE geo::distance(location, ({search_point_lon}, {search_point_lat})) < 5000;")
 
 

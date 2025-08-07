@@ -8,9 +8,15 @@ from flask import Blueprint, Response, jsonify, request
 from werkzeug.datastructures import FileStorage
 
 from lib.data_types import UserID
-from lib.models.upload import (FileType, Upload, UploadStatus, create_upload,
-                               get_upload_by_id, get_uploads_by_user,
-                               update_upload_status)
+from lib.models.upload import (
+    FileType,
+    Upload,
+    UploadStatus,
+    create_upload,
+    get_upload_by_id,
+    get_uploads_by_user,
+    update_upload_status,
+)
 from lib.services.auth_decorators import get_current_user, require_auth
 from lib.services.upload_service import process_upload_task
 from settings import BUCKET_NAME, logger

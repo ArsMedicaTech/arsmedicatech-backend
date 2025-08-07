@@ -195,18 +195,17 @@ class UserService:
                 logger.debug(f"User ID type: {type(user.id)}")
                 
                 # Test if we can immediately retrieve the user
-                logger.debug(f"Testing immediate user retrieval...")
+                logger.debug("Testing immediate user retrieval...")
                 test_user = self.get_user_by_id(user.id)
                 if test_user:
                     logger.debug(f"User can be retrieved immediately: {test_user.username}")
                 else:
-                    logger.debug(f"User cannot be retrieved immediately")
+                    logger.debug("User cannot be retrieved immediately")
                 
                 # If the user is a patient, create a corresponding Patient record
                 if user.role == "patient" and user.id:
                     try:
-                        from lib.models.patient.patient_crud import \
-                            create_patient
+                        from lib.models.patient.patient_crud import create_patient
                         user_id = str(user.id)
                         if ':' in user_id:
                             patient_id = user_id.split(':', 1)[1]
@@ -386,7 +385,7 @@ class UserService:
             return session
         elif session and session.is_expired():
             # Remove expired session
-            logger.debug(f"Removing expired session from memory cache")
+            logger.debug("Removing expired session from memory cache")
             del self.active_sessions[token]
         
         # If not in memory, check database
@@ -645,7 +644,7 @@ class UserService:
                     return False, "Failed to update settings"
             else:
                 # Create new settings
-                logger.debug(f"Creating new settings")
+                logger.debug("Creating new settings")
                 result = self.db.create('UserSettings', settings.to_dict())
                 logger.debug(f"Create result: {result}")
                 if result and result.get('id'):

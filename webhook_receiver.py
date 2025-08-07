@@ -4,9 +4,10 @@ Simple Webhook Receiver
 This script creates a local HTTP server to receive and display webhooks.
 Run this script and use http://localhost:8000/webhook as your webhook URL.
 """
-from flask import Flask, request, jsonify
 import json
 from datetime import datetime
+
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 

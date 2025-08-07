@@ -1,24 +1,29 @@
 """
 Patient routes for managing patient data and encounters.
 """
-import json
-from typing import Any, Dict, List, Tuple, Union
+from typing import Tuple
 
 from amt_nano.db.surreal import DbController
 from amt_nano.services.icd_autocoder_service import ICDAutoCoderService
 from flask import Response, jsonify, request
 
 from lib.data_types import PatientID
-from lib.models.patient.main import (create_encounter, create_patient,
-                                     delete_encounter, delete_patient,
-                                     get_all_encounters, get_all_patients,
-                                     get_encounter_by_id,
-                                     get_encounters_by_patient,
-                                     get_patient_by_id,
-                                     search_encounter_history,
-                                     search_patient_history, serialize_patient,
-                                     update_encounter, update_patient)
-from lib.services.auth_decorators import get_current_user
+from lib.models.patient.main import (
+    create_encounter,
+    create_patient,
+    delete_encounter,
+    delete_patient,
+    get_all_encounters,
+    get_all_patients,
+    get_encounter_by_id,
+    get_encounters_by_patient,
+    get_patient_by_id,
+    search_encounter_history,
+    search_patient_history,
+    serialize_patient,
+    update_encounter,
+    update_patient,
+)
 from settings import logger
 
 

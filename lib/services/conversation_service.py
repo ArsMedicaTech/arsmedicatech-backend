@@ -77,22 +77,22 @@ class ConversationService:
                 logger.debug(f"Set conversation ID to: {conversation.id}")
                 
                 # Verify the conversation was saved by trying to retrieve it
-                logger.debug(f"Verifying conversation was saved...")
+                logger.debug("Verifying conversation was saved...")
                 verification = None
                 if conversation.id is not None:
                     verification = self.get_conversation_by_id(conversation.id)
                 if verification:
                     logger.debug(f"Conversation verification successful: {verification.id}")
                 else:
-                    logger.debug(f"Conversation verification failed - could not retrieve saved conversation")
+                    logger.debug("Conversation verification failed - could not retrieve saved conversation")
                     
                     # Let's check what's actually in the database
-                    logger.debug(f"Checking all conversations in database...")
+                    logger.debug("Checking all conversations in database...")
                     all_conversations = self.db.query("SELECT * FROM Conversation")
                     logger.debug(f"All conversations: {all_conversations}")
                     
                     # Also try to get conversations by participants
-                    logger.debug(f"Checking conversations by participants...")
+                    logger.debug("Checking conversations by participants...")
                     participant_conversations = self.db.query(
                         "SELECT * FROM Conversation WHERE $user_id IN participants",
                         {"user_id": participants[0]}
@@ -233,7 +233,7 @@ class ConversationService:
                     update_result = self.db.update(f"Conversation:{conversation_id}", conv_data)
                     logger.debug(f"Conversation update result: {update_result}")
                 else:
-                    logger.debug(f"Could not fetch conversation for safe update, skipping merge update.")
+                    logger.debug("Could not fetch conversation for safe update, skipping merge update.")
                 
                 return True, "Message sent successfully", message
             else:

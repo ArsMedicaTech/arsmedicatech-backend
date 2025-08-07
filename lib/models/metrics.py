@@ -5,7 +5,7 @@ Metrics are KPIs that are tracked for a given date.
 
 This is an abstract model that can be used to track any metric, whether that's patient lab results, patient health tracking KPIs, clinic management KPIs, etc.
 """
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class Metric:

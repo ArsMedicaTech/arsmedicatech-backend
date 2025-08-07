@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from amt_nano.db.surreal import DbController
-from surrealdb import Surreal  # type: ignore
 
 from settings import logger
 

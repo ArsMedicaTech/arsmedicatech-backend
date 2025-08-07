@@ -50,7 +50,7 @@ def create_conversation_route() -> Tuple[Response, int]:
 
     :return: JSON response with success message and conversation ID or error message.
     """
-    logger.debug(f"===== CONVERSATION CREATION ENDPOINT CALLED =====")
+    logger.debug("===== CONVERSATION CREATION ENDPOINT CALLED =====")
     current_user = get_current_user()
     if not current_user:
         logger.debug("Unauthorized access - no current user found")
@@ -143,7 +143,7 @@ def send_message_route(conversation_id: str) -> Tuple[Response, int]:
     :param conversation_id: The ID of the conversation to send the message in.
     :return: JSON response with success message and message details or error message.
     """
-    logger.debug(f"===== SEND MESSAGE ENDPOINT CALLED =====")
+    logger.debug("===== SEND MESSAGE ENDPOINT CALLED =====")
     current_user = get_current_user()
 
     if not current_user:
@@ -177,7 +177,7 @@ def send_message_route(conversation_id: str) -> Tuple[Response, int]:
             return jsonify({"error": "Access denied"}), 403
 
         # Add message
-        logger.debug(f"Adding message to conversation")
+        logger.debug("Adding message to conversation")
         success, message, msg_obj = conversation_service.add_message(conversation_id, current_user_id, message_text)
 
         if success and msg_obj:
@@ -195,8 +195,9 @@ def send_message_route(conversation_id: str) -> Tuple[Response, int]:
                     finally:
                         user_service.close()
 
-                    from lib.services.notifications import \
-                        EventData  # Ensure EventData is imported
+                    from lib.services.notifications import (
+                        EventData,  # Ensure EventData is imported
+                    )
 
                     event_data = EventData(
                         event_type="new_message",
@@ -257,7 +258,7 @@ def get_conversation_messages_route(conversation_id: str) -> Tuple[Response, int
     :param conversation_id: The ID of the conversation to retrieve messages from.
     :return: JSON response with a list of messages or an error message.
     """
-    logger.debug(f"===== GET CONVERSATION MESSAGES ENDPOINT CALLED =====")
+    logger.debug("===== GET CONVERSATION MESSAGES ENDPOINT CALLED =====")
     current_user = get_current_user()
     if not current_user:
         logger.debug("Unauthorized access - no current user found")

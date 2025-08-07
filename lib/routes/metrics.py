@@ -1,10 +1,12 @@
 from flask import Blueprint, jsonify, request
 
 from lib.services.auth_decorators import require_auth
-from lib.services.metrics_service import (get_user_metric_set_by_date,
-                                          get_user_metric_sets,
-                                          save_user_metric_set,
-                                          upsert_user_metric_set_by_date)
+from lib.services.metrics_service import (
+    get_user_metric_set_by_date,
+    get_user_metric_sets,
+    save_user_metric_set,
+    upsert_user_metric_set_by_date,
+)
 
 metrics_bp = Blueprint('metrics', __name__)
 

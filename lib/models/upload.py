@@ -13,8 +13,7 @@ from amt_nano.db.surreal import DbController
 from werkzeug.datastructures import FileStorage
 
 from lib.data_types import UserID
-from settings import (BUCKET_NAME, S3_AWS_ACCESS_KEY_ID,
-                      S3_AWS_SECRET_ACCESS_KEY, logger)
+from settings import BUCKET_NAME, S3_AWS_ACCESS_KEY_ID, S3_AWS_SECRET_ACCESS_KEY, logger
 
 
 class FileType(Enum):
