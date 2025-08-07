@@ -13,10 +13,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 BASE_URL = "http://localhost:5000/api"
 
+
 def debug_profile_issue():
     """Debug the profile loading issue"""
     print("🔍 Debugging Profile Loading Issue")
-    
+
     # Test 1: Check if server is running
     print("\n1. Checking if server is running...")
     try:
@@ -27,7 +28,7 @@ def debug_profile_issue():
         print("❌ Server is not running or not accessible")
         print("Please start the Flask server first: python app.py")
         return False
-    
+
     # Test 2: Check if any users exist
     print("\n2. Checking if users exist...")
     try:
@@ -36,7 +37,7 @@ def debug_profile_issue():
         print(f"Response: {response.text}")
     except Exception as e:
         print(f"Error checking users: {e}")
-    
+
     # Test 3: Try to register a test user
     print("\n3. Registering a test user...")
     test_user = {
@@ -45,48 +46,45 @@ def debug_profile_issue():
         "password": "TestPass123!",
         "first_name": "Debug",
         "last_name": "Test",
-        "role": "provider"
+        "role": "provider",
     }
-    
+
     try:
         response = requests.post(f"{BASE_URL}/auth/register", json=test_user)
         print(f"Status: {response.status_code}")
         print(f"Response: {response.text}")
-        
+
         if response.status_code == 201:
             print("✅ Test user registered successfully")
         else:
             print("❌ Failed to register test user")
     except Exception as e:
         print(f"Error registering user: {e}")
-    
+
     # Test 4: Try to login with the test user
     print("\n4. Logging in with test user...")
-    login_data = {
-        "username": test_user["username"],
-        "password": test_user["password"]
-    }
-    
+    login_data = {"username": test_user["username"], "password": test_user["password"]}
+
     try:
         response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
         print(f"Status: {response.status_code}")
         print(f"Response: {response.text}")
-        
+
         if response.status_code == 200:
             print("✅ Login successful")
             login_response = response.json()
-            token = login_response.get('token')
-            user = login_response.get('user')
+            token = login_response.get("token")
+            user = login_response.get("user")
             print(f"Token: {token[:20] if token else 'None'}...")
             print(f"User ID: {user.get('id') if user else 'None'}")
-            
+
             # Test 5: Try to get profile with the token
             print("\n5. Getting profile with token...")
             headers = {"Authorization": f"Bearer {token}"}
             response = requests.get(f"{BASE_URL}/profile", headers=headers)
             print(f"Status: {response.status_code}")
             print(f"Response: {response.text}")
-            
+
             if response.status_code == 200:
                 print("✅ Profile retrieved successfully")
             else:
@@ -95,8 +93,9 @@ def debug_profile_issue():
             print("❌ Login failed")
     except Exception as e:
         print(f"Error during login/profile test: {e}")
-    
+
     return True
 
+
 if __name__ == "__main__":
-    debug_profile_issue() 
+    debug_profile_issue()

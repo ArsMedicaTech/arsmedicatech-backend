@@ -28,7 +28,7 @@ def async_graph_controller(mock_async_db_controller):
 
 class TestGraphController:
     """Test cases for the synchronous GraphController class."""
-    
+
     pytestmark = pytest.mark.unit
 
     @pytest.fixture
@@ -47,10 +47,11 @@ class TestGraphController:
     def test_init_with_async_db_controller(self):
         """Test GraphController initialization with async database controller."""
         from amt_nano.db.surreal import AsyncDbController
+
         mock_async_db = Mock(spec=AsyncDbController)
         # Mock the query method to have __await__ attribute
         mock_async_db.query.__await__ = Mock()
-        
+
         controller = GraphController(mock_async_db)
         assert controller.db == mock_async_db
         assert controller._is_async is True
@@ -60,9 +61,9 @@ class TestGraphController:
         from_record = "person:123"
         edge_table = "order"
         to_record = "product:456"
-        
+
         graph_controller.relate(from_record, edge_table, to_record)
-        
+
         expected_query = "RELATE person:123 -> order:ulid() -> product:456"
         mock_db_controller.query.assert_called_once_with(expected_query)
 
@@ -71,14 +72,10 @@ class TestGraphController:
         from_record = "person:123"
         edge_table = "order"
         to_record = "product:456"
-        edge_data = {
-            "quantity": 2,
-            "price": 29.99,
-            "note": "Express delivery"
-        }
-        
+        edge_data = {"quantity": 2, "price": 29.99, "note": "Express delivery"}
+
         graph_controller.relate(from_record, edge_table, to_record, edge_data)
-        
+
         expected_query = 'RELATE person:123 -> order:ulid() -> product:456 CONTENT { quantity: 2, price: 29.99, note: "Express delivery" }'
         mock_db_controller.query.assert_called_once_with(expected_query)
 
@@ -90,11 +87,11 @@ class TestGraphController:
         edge_data = {
             "severity": "->symptom:headache->severity",
             "onset": "<-diagnosis:depression<-created_at",
-            "note": "Patient reported"
+            "note": "Patient reported",
         }
-        
+
         graph_controller.relate(from_record, edge_table, to_record, edge_data)
-        
+
         expected_query = 'RELATE diagnosis:depression -> HAS_SYMPTOM:ulid() -> symptom:headache CONTENT { severity: ->symptom:headache->severity, onset: <-diagnosis:depression<-created_at, note: "Patient reported" }'
         mock_db_controller.query.assert_called_once_with(expected_query)
 
@@ -104,9 +101,9 @@ class TestGraphController:
         edge_table = "order"
         to_record = "product:456"
         edge_data = {}
-        
+
         graph_controller.relate(from_record, edge_table, to_record, edge_data)
-        
+
         expected_query = "RELATE person:123 -> order:ulid() -> product:456"
         mock_db_controller.query.assert_called_once_with(expected_query)
 
@@ -115,9 +112,9 @@ class TestGraphController:
         start_node = "diagnosis:depression"
         edge_table = "HAS_SYMPTOM"
         end_table = "symptom"
-        
+
         graph_controller.get_relations(start_node, edge_table, end_table)
-        
+
         expected_query = "SELECT ->HAS_SYMPTOM->symptom FROM diagnosis:depression"
         mock_db_controller.query.assert_called_once_with(expected_query)
 
@@ -127,16 +124,18 @@ class TestGraphController:
         edge_table = "FRIEND"
         end_table = "person"
         direction = "<-"
-        
+
         graph_controller.get_relations(start_node, edge_table, end_table, direction)
-        
+
         expected_query = "SELECT <-FRIEND<-person FROM person:123"
         mock_db_controller.query.assert_called_once_with(expected_query)
 
-    def test_count_connections_not_implemented(self, graph_controller, mock_db_controller):
+    def test_count_connections_not_implemented(
+        self, graph_controller, mock_db_controller
+    ):
         """Test that count_connections method is not yet implemented."""
         result = graph_controller.count_connections()
-        
+
         # Should call query with empty string (as per current implementation)
         mock_db_controller.query.assert_called_once_with("")
         assert result is not None  # Should return whatever the mock returns
@@ -144,7 +143,7 @@ class TestGraphController:
     def test_find_path_not_implemented(self, graph_controller, mock_db_controller):
         """Test that find_path method is not yet implemented."""
         result = graph_controller.find_path()
-        
+
         # Should call query with empty string (as per current implementation)
         mock_db_controller.query.assert_called_once_with("")
         assert result is not None  # Should return whatever the mock returns
@@ -152,30 +151,30 @@ class TestGraphController:
     def test_execute_with_sync_db(self, graph_controller, mock_db_controller):
         """Test _execute method with synchronous database controller."""
         mock_db_controller.query.return_value = "test_result"
-        
+
         result = graph_controller._execute(mock_db_controller.query, "test_query")
-        
+
         assert result == "test_result"
         mock_db_controller.query.assert_called_once_with("test_query")
 
-    @patch('asyncio.ensure_future')
+    @patch("asyncio.ensure_future")
     def test_execute_with_async_db(self, mock_ensure_future):
         """Test _execute method with asynchronous database controller."""
         mock_async_db = Mock()
         mock_async_db.query.__await__ = Mock()
         mock_async_db.query.return_value = "async_result"
-        
+
         controller = GraphController(mock_async_db)
         mock_ensure_future.return_value = "future_result"
-        
+
         result = controller._execute(mock_async_db.query, "test_query")
-        
+
         assert result == "async_result"
 
 
 class TestAsyncGraphController:
     """Test cases for the asynchronous AsyncGraphController class."""
-    
+
     pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
     @pytest.fixture
@@ -196,31 +195,33 @@ class TestAsyncGraphController:
         from_record = "person:123"
         edge_table = "order"
         to_record = "product:456"
-        
+
         await async_graph_controller.relate(from_record, edge_table, to_record)
-        
+
         expected_query = "RELATE person:123 -> order:ulid() -> product:456"
         mock_async_db_controller.query.assert_called_once_with(expected_query)
 
     @pytest.mark.asyncio
-    async def test_relate_with_edge_data(self, async_graph_controller, mock_async_db_controller):
+    async def test_relate_with_edge_data(
+        self, async_graph_controller, mock_async_db_controller
+    ):
         """Test async relationship creation with edge data."""
         from_record = "person:123"
         edge_table = "order"
         to_record = "product:456"
-        edge_data = {
-            "quantity": 2,
-            "price": 29.99,
-            "note": "Express delivery"
-        }
-        
-        await async_graph_controller.relate(from_record, edge_table, to_record, edge_data)
-        
+        edge_data = {"quantity": 2, "price": 29.99, "note": "Express delivery"}
+
+        await async_graph_controller.relate(
+            from_record, edge_table, to_record, edge_data
+        )
+
         expected_query = 'RELATE person:123 -> order:ulid() -> product:456 CONTENT { quantity: 2, price: 29.99, note: "Express delivery" }'
         mock_async_db_controller.query.assert_called_once_with(expected_query)
 
     @pytest.mark.asyncio
-    async def test_relate_with_reference_values(self, async_graph_controller, mock_async_db_controller):
+    async def test_relate_with_reference_values(
+        self, async_graph_controller, mock_async_db_controller
+    ):
         """Test async relationship creation with reference values."""
         from_record = "diagnosis:depression"
         edge_table = "HAS_SYMPTOM"
@@ -228,52 +229,64 @@ class TestAsyncGraphController:
         edge_data = {
             "severity": "->symptom:headache->severity",
             "onset": "<-diagnosis:depression<-created_at",
-            "note": "Patient reported"
+            "note": "Patient reported",
         }
-        
-        await async_graph_controller.relate(from_record, edge_table, to_record, edge_data)
-        
+
+        await async_graph_controller.relate(
+            from_record, edge_table, to_record, edge_data
+        )
+
         expected_query = 'RELATE diagnosis:depression -> HAS_SYMPTOM:ulid() -> symptom:headache CONTENT { severity: ->symptom:headache->severity, onset: <-diagnosis:depression<-created_at, note: "Patient reported" }'
         mock_async_db_controller.query.assert_called_once_with(expected_query)
 
     @pytest.mark.asyncio
-    async def test_get_relations_basic(self, async_graph_controller, mock_async_db_controller):
+    async def test_get_relations_basic(
+        self, async_graph_controller, mock_async_db_controller
+    ):
         """Test basic async relationship querying."""
         start_node = "diagnosis:depression"
         edge_table = "HAS_SYMPTOM"
         end_table = "symptom"
-        
+
         await async_graph_controller.get_relations(start_node, edge_table, end_table)
-        
+
         expected_query = "SELECT ->HAS_SYMPTOM->symptom FROM diagnosis:depression"
         mock_async_db_controller.query.assert_called_once_with(expected_query)
 
     @pytest.mark.asyncio
-    async def test_get_relations_with_direction(self, async_graph_controller, mock_async_db_controller):
+    async def test_get_relations_with_direction(
+        self, async_graph_controller, mock_async_db_controller
+    ):
         """Test async relationship querying with custom direction."""
         start_node = "person:123"
         edge_table = "FRIEND"
         end_table = "person"
         direction = "<-"
-        
-        await async_graph_controller.get_relations(start_node, edge_table, end_table, direction)
-        
+
+        await async_graph_controller.get_relations(
+            start_node, edge_table, end_table, direction
+        )
+
         expected_query = "SELECT <-FRIEND<-person FROM person:123"
         mock_async_db_controller.query.assert_called_once_with(expected_query)
 
     @pytest.mark.asyncio
-    async def test_count_connections_not_implemented(self, async_graph_controller, mock_async_db_controller):
+    async def test_count_connections_not_implemented(
+        self, async_graph_controller, mock_async_db_controller
+    ):
         """Test that async count_connections method is not yet implemented."""
         await async_graph_controller.count_connections()
-        
+
         # Should call query with empty string (as per current implementation)
         mock_async_db_controller.query.assert_called_once_with("")
 
     @pytest.mark.asyncio
-    async def test_find_path_not_implemented(self, async_graph_controller, mock_async_db_controller):
+    async def test_find_path_not_implemented(
+        self, async_graph_controller, mock_async_db_controller
+    ):
         """Test that async find_path method is not yet implemented."""
         await async_graph_controller.find_path()
-        
+
         # Should call query with empty string (as per current implementation)
         mock_async_db_controller.query.assert_called_once_with("")
 
@@ -301,7 +314,7 @@ class TestGraphControllerIntegration:
 
 class TestGraphControllerEdgeCases:
     """Test edge cases and error conditions for GraphController."""
-    
+
     pytestmark = pytest.mark.unit
 
     @pytest.fixture
@@ -314,7 +327,7 @@ class TestGraphControllerEdgeCases:
     def test_relate_with_database_error(self, mock_db_controller_with_error):
         """Test that database errors are properly propagated."""
         controller = GraphController(mock_db_controller_with_error)
-        
+
         with pytest.raises(Exception, match="Database error"):
             controller.relate("person:123", "order", "product:456")
 
@@ -323,9 +336,9 @@ class TestGraphControllerEdgeCases:
         from_record = "person:123"
         edge_table = "order"
         to_record = "product:456"
-        
+
         graph_controller.relate(from_record, edge_table, to_record, None)
-        
+
         expected_query = "RELATE person:123 -> order:ulid() -> product:456"
         mock_db_controller.query.assert_called_once_with(expected_query)
 
@@ -342,21 +355,23 @@ class TestGraphControllerEdgeCases:
             "list_value": [1, 2, 3],
             "dict_value": {"nested": "value"},
             "arrow_ref": "->table:id->field",
-            "back_arrow_ref": "<-table:id<-field"
+            "back_arrow_ref": "<-table:id<-field",
         }
-        
+
         graph_controller.relate(from_record, edge_table, to_record, edge_data)
-        
+
         expected_query = "RELATE person:123 -> order:ulid() -> product:456 CONTENT { string_value: \"test\", int_value: 42, float_value: 3.14, bool_value: True, list_value: [1, 2, 3], dict_value: {'nested': 'value'}, arrow_ref: ->table:id->field, back_arrow_ref: <-table:id<-field }"
         mock_db_controller.query.assert_called_once_with(expected_query)
 
-    def test_get_relations_with_empty_strings(self, graph_controller, mock_db_controller):
+    def test_get_relations_with_empty_strings(
+        self, graph_controller, mock_db_controller
+    ):
         """Test relationship querying with empty string parameters."""
         start_node = ""
         edge_table = ""
         end_table = ""
-        
+
         graph_controller.get_relations(start_node, edge_table, end_table)
-        
+
         expected_query = "SELECT ->-> FROM "
         mock_db_controller.query.assert_called_once_with(expected_query)
