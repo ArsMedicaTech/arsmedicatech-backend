@@ -990,7 +990,8 @@ def get_education_content(topic: str) -> Tuple[Response, int]:
     #return get_education_content_route(topic)
     return jsonify({
         "title": "3D Anatomical Visualization",
-        "url": "https://www.darrenmackenzie.com/threejs/multiaxis_fullscreen",
+        #"url": "https://www.darrenmackenzie.com/threejs/multiaxis_fullscreen",
+        "url": "https://www.darrenmackenzie.com/threejs/anatomy_fullscreen",
         "type": "3d_visualization",
         "category": "Anatomy",
         "informationCard": {
