@@ -3,7 +3,6 @@
 Simple test script to verify the profile endpoint
 """
 
-import json
 import os
 import sys
 

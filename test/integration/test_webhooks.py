@@ -7,7 +7,6 @@ This script tests the complete webhook functionality:
 2. Creates appointments to trigger webhooks
 3. Monitors webhook delivery
 """
-import json
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict
@@ -195,7 +194,7 @@ class WebhookTester:
             if response.status_code == 200:
                 data = response.json()
                 events = data.get('events', [])
-                print(f"📋 Available webhook events:")
+                print("📋 Available webhook events:")
                 for event in events:
                     print(f"  - {event['value']}: {event['description']}")
                 return events
@@ -249,25 +248,25 @@ class WebhookTester:
             return
         
         appointment_id = appointment.get('id')
-        print(f"⏳ Waiting 3 seconds for webhook delivery...")
+        print("⏳ Waiting 3 seconds for webhook delivery...")
         time.sleep(3)
         
         # Step 6: Update the appointment (triggers appointment.updated)
         print("📝 Updating appointment...")
         self.update_appointment(appointment_id)
-        print(f"⏳ Waiting 3 seconds for webhook delivery...")
+        print("⏳ Waiting 3 seconds for webhook delivery...")
         time.sleep(3)
         
         # Step 7: Confirm the appointment (triggers appointment.confirmed)
         print("✅ Confirming appointment...")
         self.confirm_appointment(appointment_id)
-        print(f"⏳ Waiting 3 seconds for webhook delivery...")
+        print("⏳ Waiting 3 seconds for webhook delivery...")
         time.sleep(3)
         
         # Step 8: Cancel the appointment (triggers appointment.cancelled)
         print("❌ Cancelling appointment...")
         self.cancel_appointment(appointment_id)
-        print(f"⏳ Waiting 3 seconds for webhook delivery...")
+        print("⏳ Waiting 3 seconds for webhook delivery...")
         time.sleep(3)
         
         print()

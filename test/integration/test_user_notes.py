@@ -49,7 +49,7 @@ def test_user_notes():
         retrieved_note = user_notes_service.get_note_by_id(note_id, test_user_id)
         
         if retrieved_note:
-            print(f"✅ Note retrieved successfully")
+            print("✅ Note retrieved successfully")
             print(f"   Content: {retrieved_note.content[:50]}...")
         else:
             print("❌ Failed to retrieve note")
@@ -65,7 +65,7 @@ def test_user_notes():
         )
         
         if success and updated_note:
-            print(f"✅ Note updated successfully")
+            print("✅ Note updated successfully")
             print(f"   New title: {updated_note.title}")
             print(f"   New tags: {updated_note.tags}")
         else:

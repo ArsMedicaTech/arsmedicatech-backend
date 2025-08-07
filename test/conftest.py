@@ -5,10 +5,11 @@ This file provides shared fixtures and configuration that can be used
 across all test files in the project.
 """
 
-import pytest
 import os
 import sys
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 # Add the project root to the Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Simple script to send a single notification"""
 
-import json
 import os
 import sys
 import time

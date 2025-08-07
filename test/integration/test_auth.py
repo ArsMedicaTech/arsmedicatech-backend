@@ -3,8 +3,6 @@
 Test script for the authentication system
 """
 
-import json
-import time
 
 import requests
 

@@ -1,7 +1,6 @@
 """
 Simple test script to verify the patient CRUD API endpoints
 """
-import json
 
 import requests
 

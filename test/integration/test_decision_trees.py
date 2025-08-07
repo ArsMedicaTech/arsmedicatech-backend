@@ -1,6 +1,10 @@
 """"""
-from lib.llm.mcp.trees import (BP_DECISION_TREE, ENHANCED_TREE, Purpose,
-                               decision_tree_lookup)
+from lib.llm.mcp.trees import (
+    BP_DECISION_TREE,
+    ENHANCED_TREE,
+    Purpose,
+    decision_tree_lookup,
+)
 
 
 def test_loan_approval():

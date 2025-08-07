@@ -3,7 +3,6 @@ Test script to check and create database schema
 """
 from lib.db.surreal import DbController
 from lib.models.patient import create_schema
-from settings import BASE_URL
 
 
 def test_schema():

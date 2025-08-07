@@ -50,7 +50,7 @@ def test_user_lookup():
                 print(f"✅ Username lookup successful: {found_user_by_username.username}")
                 print(f"   Found user ID: {found_user_by_username.id}")
             else:
-                print(f"❌ Username lookup failed")
+                print("❌ Username lookup failed")
         
     except Exception as e:
         print(f"❌ Error: {e}")

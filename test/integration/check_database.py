@@ -9,7 +9,6 @@ import sys
 # Add the parent directory to the path so we can import from lib
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.db.surreal import DbController
 from lib.services.user_service import UserService
 
 

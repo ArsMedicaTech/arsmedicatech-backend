@@ -113,9 +113,9 @@ def main():
     # List all events for the user
     list_user_events(user_id)
     
-    print(f"\n✅ Testing complete! Check your frontend for notifications.")
+    print("\n✅ Testing complete! Check your frontend for notifications.")
     print(f"   User ID: {user_id}")
-    print(f"   Frontend should be running on: http://localhost:3012")
+    print("   Frontend should be running on: http://localhost:3012")
 
 if __name__ == "__main__":
     main() 

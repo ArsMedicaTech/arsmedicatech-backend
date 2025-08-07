@@ -2,7 +2,6 @@
 Test script for the new profile functionality
 """
 
-import json
 import os
 import sys
 
@@ -167,7 +166,7 @@ def test_patient_profile():
         if response.status_code == 200:
             profile = response.json()
             profile_data = profile.get('profile', {})
-            print(f"✅ Patient profile retrieved")
+            print("✅ Patient profile retrieved")
             print(f"Role: {profile_data.get('role')}")
             print(f"Name: {profile_data.get('first_name')} {profile_data.get('last_name')}")
         else:

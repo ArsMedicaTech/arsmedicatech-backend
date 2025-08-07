@@ -3,7 +3,6 @@
 Debug script to help identify the profile loading issue
 """
 
-import json
 import os
 import sys
 

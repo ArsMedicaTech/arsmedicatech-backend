@@ -7,7 +7,6 @@ Tests the GraphController and AsyncGraphController classes for graph operations
 in SurrealDB, including relationship creation, querying, and edge cases.
 """
 
-import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

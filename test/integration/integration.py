@@ -7,14 +7,13 @@ import requests
 # Add the project root to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from settings import TEST_OPTIMAL_KEY, OPTIMAL_URL, logger
+from settings import OPTIMAL_URL, TEST_OPTIMAL_KEY, logger
 
 
 def test_optimal_service():
     import numpy as np
 
-    from lib.opt.hypertension import (build_hypertension_payload,
-                                      create_food_data_pd)
+    from lib.opt.hypertension import build_hypertension_payload, create_food_data_pd
 
     food_data = create_food_data_pd()
 

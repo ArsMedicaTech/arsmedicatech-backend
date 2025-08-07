@@ -1,9 +1,7 @@
 """
 Test script to create a patient and immediately retrieve it
 """
-from lib.models.patient import (create_patient, get_all_patients,
-                                get_patient_by_id)
-from settings import BASE_URL
+from lib.models.patient import create_patient, get_all_patients, get_patient_by_id
 
 
 def test_create_and_retrieve():
@@ -38,7 +36,7 @@ def test_create_and_retrieve():
             print("Failed to retrieve the patient we just created!")
             
         # Test 3: Check if it appears in the list
-        print(f"\n3. Checking if patient appears in get_all_patients()...")
+        print("\n3. Checking if patient appears in get_all_patients()...")
         all_patients = get_all_patients()
         found_in_list = any(p.get('demographic_no') == patient_id for p in all_patients)
         if found_in_list:
