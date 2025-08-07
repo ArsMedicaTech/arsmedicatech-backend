@@ -1,6 +1,7 @@
 """
 LLM Chat Service
 """
+
 from typing import List, Optional
 
 from amt_nano.db.surreal import DbController
@@ -14,6 +15,7 @@ class LLMChatService:
     """
     Service for managing LLM chats, including creating, retrieving, and updating chats.
     """
+
     def __init__(self, db_controller: Optional[DbController] = None) -> None:
         """
         Initialize the LLMChatService with a database controller.
@@ -48,8 +50,7 @@ class LLMChatService:
         :return: List[LLMChat] - A list of LLMChat objects for the specified user.
         """
         result = self.db.query(
-            "SELECT * FROM LLMChat WHERE user_id = $user_id",
-            {"user_id": user_id}
+            "SELECT * FROM LLMChat WHERE user_id = $user_id", {"user_id": user_id}
         )
         chats = []
         if result and isinstance(result, list):
@@ -68,7 +69,7 @@ class LLMChatService:
         """
         result = self.db.query(
             "SELECT * FROM LLMChat WHERE user_id = $user_id AND assistant_id = $assistant_id",
-            {"user_id": user_id, "assistant_id": assistant_id}
+            {"user_id": user_id, "assistant_id": assistant_id},
         )
         if result and isinstance(result, list) and len(result) > 0:
             return LLMChat.from_dict(result[0])
@@ -83,12 +84,19 @@ class LLMChatService:
         :return: LLMChat - The newly created LLMChat object.
         """
         chat = LLMChat(user_id=user_id, assistant_id=assistant_id)
-        result = self.db.create('LLMChat', chat.to_dict())
+        result = self.db.create("LLMChat", chat.to_dict())
         if result and isinstance(result, dict):
-            chat.id = result.get('id')
+            chat.id = result.get("id")
         return chat
 
-    def add_message(self, user_id: UserID, assistant_id: str, sender: str, text: str, used_tools: Optional[List[str]] = None) -> LLMChat:
+    def add_message(
+        self,
+        user_id: UserID,
+        assistant_id: str,
+        sender: str,
+        text: str,
+        used_tools: Optional[List[str]] = None,
+    ) -> LLMChat:
         """
         Add a message to the LLM chat, creating the chat if needed
 
@@ -107,6 +115,6 @@ class LLMChatService:
         chat_id: str = chat.id or ""
         if not chat_id:
             raise ValueError("Chat ID is not set")
-        
+
         self.db.update(f"LLMChat:{chat_id.split(':', 1)[1]}", chat.to_dict())
-        return chat 
+        return chat

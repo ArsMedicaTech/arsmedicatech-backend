@@ -1,6 +1,7 @@
 """
 This module defines a Organization class and provides functions to interact with a SurrealDB database.
 """
+
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -14,6 +15,7 @@ class Organization:
     """
     Represents an organization in the system.
     """
+
     def __init__(
         self,
         name: str,
@@ -52,9 +54,9 @@ class Organization:
         org_id = data.get("id")
         if org_id is not None:
             # Convert RecordID to string if it's not already a string
-            if hasattr(org_id, '__str__'):
+            if hasattr(org_id, "__str__"):
                 org_id = str(org_id)
-        
+
         return cls(
             name=data.get("name", ""),
             org_type=data.get("org_type", ""),
@@ -66,13 +68,17 @@ class Organization:
             clinic_ids=data.get("clinic_ids", []),
         )
 
-def generate_surrealql_create_query(org: Organization, table_name: str = "organization") -> str:
+
+def generate_surrealql_create_query(
+    org: Organization, table_name: str = "organization"
+) -> str:
     data_to_set = org.to_dict()
     # Remove id if present, so SurrealDB generates it
     data_to_set.pop("id", None)
     set_clause = json.dumps(data_to_set, indent=4)
     query = f"CREATE {table_name} CONTENT {set_clause};"
     return query
+
 
 def create_organization(org: Organization) -> Optional[str]:
     """
@@ -83,33 +89,35 @@ def create_organization(org: Organization) -> Optional[str]:
     try:
         query = generate_surrealql_create_query(org)
         result = db.query(query)
-        logger.debug('Organization create result type:', type(result))
-        logger.debug('Organization create result:', result)
-        
+        logger.debug("Organization create result type:", type(result))
+        logger.debug("Organization create result:", result)
+
         # Handle the query result structure
         if result and len(result) > 0:
             first_result = result[0]
-            logger.debug('First result type:', type(first_result))
-            logger.debug('First result:', first_result)
-            
+            logger.debug("First result type:", type(first_result))
+            logger.debug("First result:", first_result)
+
             # Check if result has a 'result' key (common in SurrealDB responses)
-            if 'result' in first_result:
-                logger.debug('Found result key in first_result')
-                if first_result['result'] and len(first_result['result']) > 0:
-                    created_record = first_result['result'][0]
-                    logger.debug('Created record:', created_record)
-                    if 'id' in created_record:
-                        logger.debug('Found id in created_record:', created_record['id'])
-                        return str(created_record['id'])
+            if "result" in first_result:
+                logger.debug("Found result key in first_result")
+                if first_result["result"] and len(first_result["result"]) > 0:
+                    created_record = first_result["result"][0]
+                    logger.debug("Created record:", created_record)
+                    if "id" in created_record:
+                        logger.debug(
+                            "Found id in created_record:", created_record["id"]
+                        )
+                        return str(created_record["id"])
             # If no 'result' key, check if the first result has an 'id'
-            elif 'id' in first_result:
-                logger.debug('Found id directly in first_result:', first_result['id'])
-                return str(first_result['id'])
+            elif "id" in first_result:
+                logger.debug("Found id directly in first_result:", first_result["id"])
+                return str(first_result["id"])
             else:
-                logger.debug('No result or id keys found in first_result')
+                logger.debug("No result or id keys found in first_result")
         else:
-            logger.debug('No result or empty result list')
-        
+            logger.debug("No result or empty result list")
+
         logger.warning("No valid result found in query response")
         return None
     except Exception as e:

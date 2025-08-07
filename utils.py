@@ -1,4 +1,5 @@
 """"""
+
 import socket
 import ssl
 from datetime import datetime
@@ -19,26 +20,27 @@ def fetch_cert(hostname, port=443):
             print(f"SSL error: {e}")
             return None
 
+
 def parse_cert(cert):
     if not cert:
         logger.debug("❌ No certificate found or unable to fetch.")
         return
 
     logger.debug("\n📄 Subject:")
-    pprint(cert.get('subject'))
+    pprint(cert.get("subject"))
 
     logger.debug("\n🏢 Issuer:")
-    pprint(cert.get('issuer'))
+    pprint(cert.get("issuer"))
 
     logger.debug("\n📅 Validity Period:")
     print(f"  Not Before: {cert.get('notBefore')}")
     print(f"  Not After : {cert.get('notAfter')}")
 
     logger.debug("\n🌐 Subject Alt Names:")
-    pprint(cert.get('subjectAltName'))
+    pprint(cert.get("subjectAltName"))
 
     # Expiry check
-    not_after = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y %Z')
+    not_after = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
     days_left = (not_after - datetime.utcnow()).days
     print(f"\n✅ Expires in: {days_left} days")
 
@@ -46,6 +48,7 @@ def parse_cert(cert):
         logger.debug("❌ Certificate has expired!")
     elif days_left < 10:
         logger.debug("⚠️ Certificate is about to expire!")
+
 
 if __name__ == "__main__":
     domain = "demo.arsmedicatech.com"
@@ -97,45 +100,45 @@ CREATE TABLE `formAR` (
 
 def calculate_row_size(sql_string: str):
     row_size = 0
-    for line in sql_string.split('\n'):
+    for line in sql_string.split("\n"):
         print(line)
         line = line.lstrip().rstrip()
-        if line.startswith('CREATE TABLE'):
+        if line.startswith("CREATE TABLE"):
             logger.debug("CONTINUING:", line)
             continue
-        elif line.startswith('PRIMARY KEY'):
+        elif line.startswith("PRIMARY KEY"):
             logger.debug("BREAKING:", line)
             break
-        elif line == '':
+        elif line == "":
             logger.debug("CONTINUING:", line)
             continue
-        x = line.split(' ')
+        x = line.split(" ")
         try:
             field_type = x[1].lstrip().rstrip()
         except:
             print("Error:", line)
             continue
 
-        if field_type.startswith('varchar'):
-            row_size += int(field_type.split('(')[1].split(')')[0]) * 4
-        elif field_type.startswith('char'):
-            row_size += int(field_type.split('(')[1].split(')')[0])
-        elif field_type.startswith('int'):
+        if field_type.startswith("varchar"):
+            row_size += int(field_type.split("(")[1].split(")")[0]) * 4
+        elif field_type.startswith("char"):
+            row_size += int(field_type.split("(")[1].split(")")[0])
+        elif field_type.startswith("int"):
             row_size += 4
-        elif field_type.startswith('bigint'):
+        elif field_type.startswith("bigint"):
             row_size += 8
-        elif field_type.startswith('tinyint'):
+        elif field_type.startswith("tinyint"):
             row_size += 1
-        elif field_type.startswith('date'):
+        elif field_type.startswith("date"):
             row_size += 3
-        elif field_type.startswith('timestamp'):
+        elif field_type.startswith("timestamp"):
             row_size += 4
-        elif field_type.startswith('text'):
+        elif field_type.startswith("text"):
             row_size += 20
         else:
             print("Unknown field type:", field_type)
             print(line)
-            if '`ID` INT NOT NULL' in line:
+            if "`ID` INT NOT NULL" in line:
                 row_size += 4
             else:
                 raise Exception("Unknown field type")
@@ -147,9 +150,9 @@ print(calculate_row_size(sql_query))  # 202
 start_line = 521
 end_line = 694
 
-file_path = 'emr/oscar/migrations/initcaisi.sql'
+file_path = "emr/oscar/migrations/initcaisi.sql"
 
-with open(file_path, 'r') as f:
+with open(file_path, "r") as f:
     sql_lines = f.readlines()
 
     s = ""

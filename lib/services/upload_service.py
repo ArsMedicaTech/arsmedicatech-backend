@@ -1,6 +1,7 @@
 """
 Service for handling file uploads and processing tasks using Celery.
 """
+
 from celery import shared_task  # type: ignore
 
 from lib.models.upload import UploadStatus, update_upload_status
@@ -14,7 +15,9 @@ def process_upload_task(self, upload_id: str, file_type: str, s3_key: str):
     Celery task to process an uploaded file (OCR or transcription).
     Updates the Upload status in the database.
     """
-    logger.info(f"[Celery] Processing upload {upload_id} (type={file_type}, s3_key={s3_key})")
+    logger.info(
+        f"[Celery] Processing upload {upload_id} (type={file_type}, s3_key={s3_key})"
+    )
     try:
         result = update_upload_status(upload_id, UploadStatus.PROCESSING)
         logger.debug(f"[Celery] Update upload status result: {result}")
@@ -32,7 +35,9 @@ def process_upload_task(self, upload_id: str, file_type: str, s3_key: str):
         else:
             # No processing for text/unknown
             result_text = ""
-        result = update_upload_status(upload_id, UploadStatus.COMPLETED, processed_text=result_text)
+        result = update_upload_status(
+            upload_id, UploadStatus.COMPLETED, processed_text=result_text
+        )
         logger.warning(f"[Celery] Update upload status result: {result}")
         logger.warning(f"[Celery] Upload {upload_id} processed successfully.")
     except Exception as e:

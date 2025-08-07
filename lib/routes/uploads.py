@@ -1,6 +1,7 @@
 """
 Uploads API Routes
 """
+
 from typing import Tuple
 
 import boto3  # type: ignore
@@ -21,9 +22,10 @@ from lib.services.auth_decorators import get_current_user, require_auth
 from lib.services.upload_service import process_upload_task
 from settings import BUCKET_NAME, logger
 
-uploads_bp = Blueprint('uploads', __name__)
+uploads_bp = Blueprint("uploads", __name__)
 
-@uploads_bp.route('/api/uploads', methods=['POST'])
+
+@uploads_bp.route("/api/uploads", methods=["POST"])
 @require_auth
 def upload_file_route() -> Tuple[Response, int]:
     """
@@ -33,20 +35,22 @@ def upload_file_route() -> Tuple[Response, int]:
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    if 'file' not in request.files:
+    if "file" not in request.files:
         return jsonify({"error": "No file part in request"}), 400
-    file: FileStorage = request.files['file']
+    file: FileStorage = request.files["file"]
     filename = file.filename or ""
-    if filename == '':
+    if filename == "":
         return jsonify({"error": "No selected file"}), 400
 
     file_type = Upload.get_file_type_from_extension(filename)
-    uploader_id: UserID = UserID(user.user_id) if not isinstance(user.user_id, UserID) else user.user_id
+    uploader_id: UserID = (
+        UserID(user.user_id) if not isinstance(user.user_id, UserID) else user.user_id
+    )
     s3_key = Upload.generate_s3_key(uploader_id, filename)
     file_size = 0
     try:
         # Upload to S3
-        s3 = boto3.client('s3')
+        s3 = boto3.client("s3")
         file.seek(0, 2)  # Seek to end to get size
         file_size = file.tell()
         file.seek(0)
@@ -80,7 +84,8 @@ def upload_file_route() -> Tuple[Response, int]:
 
     return jsonify({"id": upload_id, **upload.to_dict()}), 201
 
-@uploads_bp.route('/api/uploads', methods=['GET'])
+
+@uploads_bp.route("/api/uploads", methods=["GET"])
 @require_auth
 def list_uploads_route():
     """
@@ -89,11 +94,14 @@ def list_uploads_route():
     user = get_current_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    uploader_id: UserID = UserID(user.user_id) if not isinstance(user.user_id, UserID) else user.user_id
+    uploader_id: UserID = (
+        UserID(user.user_id) if not isinstance(user.user_id, UserID) else user.user_id
+    )
     uploads = get_uploads_by_user(uploader_id)
     return jsonify(uploads), 200
 
-@uploads_bp.route('/api/uploads/<upload_id>', methods=['GET'])
+
+@uploads_bp.route("/api/uploads/<upload_id>", methods=["GET"])
 @require_auth
 def get_upload_route(upload_id: str) -> Tuple[Response, int]:
     """

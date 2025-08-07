@@ -1,6 +1,7 @@
 """
 Vector database migration script.
 """
+
 import asyncio
 
 from amt_nano.db.vec import Vec
@@ -32,6 +33,7 @@ def init_vec() -> None:
         return
 
     logger.debug("Vector database initialized and seeded successfully.")
+
 
 if __name__ == "__main__":
     init_vec()

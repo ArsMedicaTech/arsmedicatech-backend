@@ -1,6 +1,7 @@
 """
 UMLS API Service.
 """
+
 import logging
 import time
 from functools import lru_cache
@@ -8,9 +9,9 @@ from typing import Dict, List, Optional, Union
 
 import requests
 
-#INTERVAL = 0.05 # 20 requests per second
+# INTERVAL = 0.05 # 20 requests per second
 COURTESY_PADDING = 0.005
-INTERVAL = 0.05 + COURTESY_PADDING # 20 requests per second with padding
+INTERVAL = 0.05 + COURTESY_PADDING  # 20 requests per second with padding
 
 
 class UMLSApiService:
@@ -49,7 +50,9 @@ class UMLSApiService:
         if sabs:
             params["sabs"] = ",".join(sabs)
 
-        response = self.session.get(f"{self.base_url}/rest/search/current", params=params)
+        response = self.session.get(
+            f"{self.base_url}/rest/search/current", params=params
+        )
 
         time.sleep(INTERVAL)
 
@@ -89,7 +92,7 @@ class UMLSApiService:
     def normalize_entities(
         self,
         entities: List[Dict[str, Optional[Union[str, int]]]],
-        sabs: Optional[List[str]] = ["SNOMEDCT_US", "ICD10CM"]
+        sabs: Optional[List[str]] = ["SNOMEDCT_US", "ICD10CM"],
     ) -> List[Dict]:
         """
         Normalize a list of NER entity dicts: {'text': ..., 'label': ..., ...}
@@ -99,17 +102,21 @@ class UMLSApiService:
         for ent in entities:
             norm = self.search_concept(ent["text"], sabs=sabs)
             if norm:
-                results.append({
-                    **ent,
-                    "cui": norm["cui"],
-                    "preferred_name": norm["name"],
-                    "score": norm["score"]
-                })
+                results.append(
+                    {
+                        **ent,
+                        "cui": norm["cui"],
+                        "preferred_name": norm["name"],
+                        "score": norm["score"],
+                    }
+                )
             else:
                 results.append({**ent, "cui": None, "preferred_name": None, "score": 0})
         return results
 
-    def get_icd10cm_from_cui(self, cui: str) -> List[Dict[str, Optional[Union[str, int]]]]:
+    def get_icd10cm_from_cui(
+        self, cui: str
+    ) -> List[Dict[str, Optional[Union[str, int]]]]:
         """
         Return all ICD-10-CM codes mapped from a given UMLS CUI.
         """
@@ -126,16 +133,15 @@ class UMLSApiService:
 
         items = response.json().get("result", [])
         return [
-            {
-                "code": item["ui"],
-                "name": item["name"],
-                "source": item["rootSource"]
-            }
+            {"code": item["ui"], "name": item["name"], "source": item["rootSource"]}
             for item in items
         ]
 
+
 @lru_cache(maxsize=4096)
-def normalize(umls: UMLSApiService, text: str) -> Optional[Dict[str, Optional[Union[str, int]]]]:
+def normalize(
+    umls: UMLSApiService, text: str
+) -> Optional[Dict[str, Optional[Union[str, int]]]]:
     """
     Normalize a given text using UMLS API.
     :param text: str - The text to normalize.

@@ -1,6 +1,7 @@
 """
 ICD Code Management with SurrealDB
 """
+
 import asyncio
 import csv
 from typing import Any, Dict, List
@@ -43,20 +44,25 @@ async def import_icd_codes(csv_file_path: str) -> None:
     await db.use(SURREALDB_NAMESPACE, SURREALDB_ICD_DB)
     if SURREALDB_USER is None or SURREALDB_PASS is None:
         raise ValueError("SURREALDB_USER and SURREALDB_PASS must not be None")
-    
-    credentials: Dict[str, Any] = {'username': SURREALDB_USER, 'password': SURREALDB_PASS}
+
+    credentials: Dict[str, Any] = {
+        "username": SURREALDB_USER,
+        "password": SURREALDB_PASS,
+    }
     await db.signin(credentials)
 
-    with open(csv_file_path, 'r', encoding='utf-8') as file:
+    with open(csv_file_path, "r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         i = 0
         for row in reader:
             i += 1
             logger.debug(str(row))
-            icd_code = row['CODE']
-            short_description = row['SHORT DESCRIPTION (VALID ICD-10 FY2025)']
+            icd_code = row["CODE"]
+            short_description = row["SHORT DESCRIPTION (VALID ICD-10 FY2025)"]
 
-            await db.create(f"icd:{icd_code}", {"code": icd_code, "description": short_description})
+            await db.create(
+                f"icd:{icd_code}", {"code": icd_code, "description": short_description}
+            )
 
             if i % 100 == 0:
                 logger.debug(f"{i} records inserted...")
@@ -76,13 +82,12 @@ async def define_index() -> None:
     if not SURREALDB_NAMESPACE or not SURREALDB_ICD_DB:
         raise ValueError("SURREALDB_NAMESPACE and SURREALDB_ICD_DB must not be empty")
     await db.use(SURREALDB_NAMESPACE, SURREALDB_ICD_DB)
-    await db.signin({'username': SURREALDB_USER, 'password': SURREALDB_PASS})
+    await db.signin({"username": SURREALDB_USER, "password": SURREALDB_PASS})
 
     # Define the index
     await db.query(q)
 
     await db.close()
-
 
 
 async def search_icd_by_description(search_term: str) -> List[Dict[str, Any]]:
@@ -95,7 +100,7 @@ async def search_icd_by_description(search_term: str) -> List[Dict[str, Any]]:
     if not SURREALDB_NAMESPACE or not SURREALDB_ICD_DB:
         raise ValueError("SURREALDB_NAMESPACE and SURREALDB_ICD_DB must not be empty")
     await db.use(SURREALDB_NAMESPACE, SURREALDB_ICD_DB)
-    await db.signin({'username': SURREALDB_USER, 'password': SURREALDB_PASS})
+    await db.signin({"username": SURREALDB_USER, "password": SURREALDB_PASS})
 
     # Use SurrealQL to search for matching descriptions
     # The CONTAINS operator performs a case-sensitive search
@@ -104,8 +109,8 @@ async def search_icd_by_description(search_term: str) -> List[Dict[str, Any]]:
 
     await db.close()
 
-    if results and len(results) > 0 and 'result' in results[0]:
-        return results[0]['result']
+    if results and len(results) > 0 and "result" in results[0]:
+        return results[0]["result"]
     else:
         return []
 
@@ -131,12 +136,12 @@ async def lookup_icd_code(icd_code: ICD10Code) -> Optional[Dict[str, Any]]:
     if not SURREALDB_NAMESPACE or not SURREALDB_ICD_DB:
         raise ValueError("SURREALDB_NAMESPACE and SURREALDB_ICD_DB must not be empty")
     await db.use(SURREALDB_NAMESPACE, SURREALDB_ICD_DB)
-    await db.signin({'username': SURREALDB_USER, 'password': SURREALDB_PASS})
+    await db.signin({"username": SURREALDB_USER, "password": SURREALDB_PASS})
 
     # Query the specific ICD code
     # TODO: Does not work?
-    #result = await db.select(f"icd:{icd_code}")
-    #logger.debug("RESULT", result)
+    # result = await db.select(f"icd:{icd_code}")
+    # logger.debug("RESULT", result)
 
     query = f"SELECT * FROM icd WHERE code = '{icd_code}';"
     result = await db.query(query)
@@ -155,8 +160,12 @@ if __name__ == "__main__":
 
     if len(sys.argv) < 2:
         logger.debug("Usage:")
-        logger.debug("To migrate ICD data from CSV to SurrealDB: python lib/models/icd.py migrate <path_to_csv>")
-        logger.debug("To search for an ICD code: python lib/models/icd.py search <search_term> (ex: A000)")
+        logger.debug(
+            "To migrate ICD data from CSV to SurrealDB: python lib/models/icd.py migrate <path_to_csv>"
+        )
+        logger.debug(
+            "To search for an ICD code: python lib/models/icd.py search <search_term> (ex: A000)"
+        )
         sys.exit(1)
 
     if sys.argv[1] == "migrate":
