@@ -202,3 +202,36 @@ class UserNote:
             date_updated=data.get('date_updated'),
             id=note_id
         )
+    
+    @staticmethod
+    def schema() -> str:
+        """
+        Return the schema definition for the UserNote model
+
+        :return: Schema definition string
+        """
+        return """
+        -- Define UserNote table
+        DEFINE TABLE UserNote SCHEMAFULL;
+        
+        -- Define fields
+        DEFINE FIELD user_id ON UserNote TYPE string;
+        DEFINE FIELD title ON UserNote TYPE string;
+        DEFINE FIELD content ON UserNote TYPE string;
+        DEFINE FIELD note_type ON UserNote TYPE string;
+        DEFINE FIELD tags ON UserNote TYPE array;
+        DEFINE FIELD date_created ON UserNote TYPE string;
+        DEFINE FIELD date_updated ON UserNote TYPE string;
+        
+        -- Define indexes
+        DEFINE INDEX idx_user_id ON UserNote FIELDS user_id;
+        DEFINE INDEX idx_note_type ON UserNote FIELDS note_type;
+        DEFINE INDEX idx_date_updated ON UserNote FIELDS date_updated;
+        
+        -- Define permissions (users can only access their own notes or shared notes)
+        DEFINE TABLE UserNote PERMISSIONS 
+            FOR select WHERE auth.id = user_id OR note_type = 'shared'
+            FOR create WHERE auth.id = user_id
+            FOR update WHERE auth.id = user_id
+            FOR delete WHERE auth.id = user_id;
+        """
