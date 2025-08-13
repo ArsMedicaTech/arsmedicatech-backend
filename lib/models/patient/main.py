@@ -1,6 +1,7 @@
 """
 Main module for patient-related operations.
 """
+
 from lib.models.patient.common import *
 from lib.models.patient.encounter_crud import *
 from lib.models.patient.encounter_model import *

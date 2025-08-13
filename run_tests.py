@@ -20,10 +20,10 @@ def run_command(cmd, description=""):
         print(f"\n{'='*60}")
         print(f"Running: {description}")
         print(f"{'='*60}")
-    
+
     print(f"Command: {' '.join(cmd)}")
     print("-" * 60)
-    
+
     try:
         result = subprocess.run(cmd, check=True, capture_output=False)
         print(f"\n✅ {description} completed successfully!")
@@ -34,40 +34,36 @@ def run_command(cmd, description=""):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test runner for arsmedicatech project")
+    parser = argparse.ArgumentParser(
+        description="Test runner for arsmedicatech project"
+    )
     parser.add_argument(
         "test_type",
         choices=["unit", "integration", "all", "coverage", "quick"],
-        help="Type of tests to run"
+        help="Type of tests to run",
     )
     parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Run tests in verbose mode"
+        "--verbose", "-v", action="store_true", help="Run tests in verbose mode"
     )
     parser.add_argument(
-        "--markers", "-m",
-        help="Run tests with specific markers (e.g., 'db' or 'slow')"
+        "--markers", "-m", help="Run tests with specific markers (e.g., 'db' or 'slow')"
+    )
+    parser.add_argument("--file", "-f", help="Run tests from a specific file")
+    parser.add_argument(
+        "--function", "-k", help="Run tests matching a specific function name pattern"
     )
     parser.add_argument(
-        "--file", "-f",
-        help="Run tests from a specific file"
-    )
-    parser.add_argument(
-        "--function", "-k",
-        help="Run tests matching a specific function name pattern"
-    )
-    parser.add_argument(
-        "--parallel", "-n",
+        "--parallel",
+        "-n",
         type=int,
-        help="Run tests in parallel with specified number of workers"
+        help="Run tests in parallel with specified number of workers",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Base pytest command - use sys.executable to ensure we use the current Python environment
     cmd = [sys.executable, "-m", "pytest"]
-    
+
     # Add test type specific options
     if args.test_type == "unit":
         cmd.extend(["-m", "unit"])
@@ -87,26 +83,26 @@ def main():
         cmd.extend(["--ignore=test/integration"])
         # Playwright frontend e2e tests folder:
         cmd.extend(["--ignore=test/e2e"])
-    
+
     # Add additional options
     if args.verbose:
         cmd.append("-v")
-    
+
     if args.markers:
         cmd.extend(["-m", args.markers])
-    
+
     if args.file:
         cmd.append(args.file)
-    
+
     if args.function:
         cmd.extend(["-k", args.function])
-    
+
     if args.parallel:
         cmd.extend(["-n", str(args.parallel)])
-    
+
     # Run the tests
     success = run_command(cmd, description)
-    
+
     if success:
         print("\n🎉 All tests passed!")
         sys.exit(0)

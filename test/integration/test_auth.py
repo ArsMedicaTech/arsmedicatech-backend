@@ -3,8 +3,6 @@
 Test script for the authentication system
 """
 
-import json
-import time
 
 import requests
 
@@ -15,14 +13,15 @@ TEST_USER = {
     "email": "test@example.com",
     "password": "TestPass123",
     "first_name": "Test",
-    "last_name": "User"
+    "last_name": "User",
 }
+
 
 def test_auth_system():
     """Test the complete authentication flow"""
     print("🧪 Testing Authentication System")
     print("=" * 50)
-    
+
     # Test 1: Setup default admin
     print("\n1. Setting up default admin...")
     try:
@@ -31,7 +30,7 @@ def test_auth_system():
         print(f"   Response: {response.json()}")
     except Exception as e:
         print(f"   Error: {e}")
-    
+
     # Test 2: Register new user
     print("\n2. Registering new user...")
     try:
@@ -44,19 +43,19 @@ def test_auth_system():
             print("   ❌ User registration failed")
     except Exception as e:
         print(f"   Error: {e}")
-    
+
     # Test 3: Login with new user
     print("\n3. Logging in with new user...")
     try:
         login_data = {
             "username": TEST_USER["username"],
-            "password": TEST_USER["password"]
+            "password": TEST_USER["password"],
         }
         response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
         print(f"   Status: {response.status_code}")
         result = response.json()
         print(f"   Response: {result}")
-        
+
         if response.status_code == 200:
             print("   ✅ Login successful")
             token = result.get("token")
@@ -69,7 +68,7 @@ def test_auth_system():
     except Exception as e:
         print(f"   Error: {e}")
         token = None
-    
+
     # Test 4: Access protected endpoint
     if token:
         print("\n4. Testing protected endpoint...")
@@ -84,7 +83,7 @@ def test_auth_system():
                 print("   ❌ Protected endpoint failed")
         except Exception as e:
             print(f"   Error: {e}")
-    
+
     # Test 5: Access patients endpoint (requires auth)
     if token:
         print("\n5. Testing patients endpoint...")
@@ -99,7 +98,7 @@ def test_auth_system():
                 print("   ❌ Patients endpoint failed")
         except Exception as e:
             print(f"   Error: {e}")
-    
+
     # Test 6: Test without authentication
     print("\n6. Testing without authentication...")
     try:
@@ -112,7 +111,7 @@ def test_auth_system():
             print("   ❌ Authentication not enforced")
     except Exception as e:
         print(f"   Error: {e}")
-    
+
     # Test 7: Logout
     if token:
         print("\n7. Testing logout...")
@@ -127,25 +126,22 @@ def test_auth_system():
                 print("   ❌ Logout failed")
         except Exception as e:
             print(f"   Error: {e}")
-    
+
     # Test 8: Test admin login
     print("\n8. Testing admin login...")
     try:
-        admin_data = {
-            "username": "admin",
-            "password": "Admin123!"
-        }
+        admin_data = {"username": "admin", "password": "Admin123!"}
         response = requests.post(f"{BASE_URL}/auth/login", json=admin_data)
         print(f"   Status: {response.status_code}")
         result = response.json()
         print(f"   Response: {result}")
-        
+
         if response.status_code == 200:
             print("   ✅ Admin login successful")
             admin_token = result.get("token")
             admin_user = result.get("user")
             print(f"   Admin role: {admin_user.get('role')}")
-            
+
             # Test admin endpoint
             if admin_token:
                 print("\n9. Testing admin endpoint...")
@@ -161,9 +157,10 @@ def test_auth_system():
             print("   ❌ Admin login failed")
     except Exception as e:
         print(f"   Error: {e}")
-    
+
     print("\n" + "=" * 50)
     print("🏁 Authentication system test completed!")
 
+
 if __name__ == "__main__":
-    test_auth_system() 
+    test_auth_system()
