@@ -32,7 +32,6 @@ from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.wrappers.response import Response as BaseResponse
 
-from lib.data_types import EducationContent
 from lib.dummy_data import DUMMY_CONVERSATIONS
 from lib.event_handlers import register_event_handlers
 from lib.routes.administration import (
