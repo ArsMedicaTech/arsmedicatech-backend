@@ -4,6 +4,9 @@ Test runner script for the arsmedicatech project.
 
 This script provides convenient commands to run different types of tests
 with various options and configurations.
+
+Example for specific integration test (`test_education.py`)
+python run_tests.py integration --file test/integration/test_education.py
 """
 
 import argparse

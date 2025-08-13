@@ -67,6 +67,7 @@ from lib.routes.chat import (
     get_user_conversations_route,
     send_message_route,
 )
+from lib.routes.education import get_education_content_route
 from lib.routes.llm_agent import llm_agent_endpoint_route
 from lib.routes.metrics import metrics_bp
 from lib.routes.optimal import call_optimal_route
@@ -1062,7 +1063,6 @@ def get_organization(
         # Only allow alphanumeric, underscore, dash
         if re.fullmatch(r"[\w-]+", org_id):
             from lib.routes.organizations import get_organization_by_user_id_route
-
             return get_organization_by_user_id_route(org_id)
         else:
             # Invalid org_id, abort with 400 Bad Request
@@ -1136,6 +1136,15 @@ def remove_clinic_from_organization(org_id: str) -> Tuple[Response, int]:
     from lib.routes.organizations import remove_clinic_from_organization_route
 
     return remove_clinic_from_organization_route(org_id)
+
+@app.route('/api/education/<topic>', methods=['GET'])
+def get_education_content(topic: str) -> Tuple[Response, int]:
+    """
+    Get educational content for a specific topic.
+    :param topic: The topic to retrieve educational content for.
+    :return: Response object with educational content data.
+    """
+    return get_education_content_route(topic)
 
 
 # User Notes endpoints
