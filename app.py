@@ -67,6 +67,7 @@ from lib.routes.chat import (
     get_user_conversations_route,
     send_message_route,
 )
+from lib.routes.education import get_education_content_route
 from lib.routes.llm_agent import llm_agent_endpoint_route
 from lib.routes.metrics import metrics_bp
 from lib.routes.optimal import call_optimal_route
@@ -1044,24 +1045,7 @@ def get_education_content(topic: str) -> Tuple[Response, int]:
     :param topic: The topic to retrieve educational content for.
     :return: Response object with educational content data.
     """
-    #from lib.routes.education import get_education_content_route
-    #return get_education_content_route(topic)
-    default_content: EducationContent = {
-        "title": "3D Anatomical Visualization",
-        #"url": "https://www.darrenmackenzie.com/threejs/multiaxis_fullscreen",
-        "url": "https://www.darrenmackenzie.com/threejs/anatomy_fullscreen",
-        "type": "3d_visualization",
-        "category": "Anatomy",
-        "informationCard": {
-            "description": "Explore the human body in 3D with detailed anatomical models.",
-            "features": [
-                {"title": "Interactive Models", "description": "Rotate and zoom in on 3D models."},
-            ]
-        },
-        "createdAt": "2023-10-01T12:00:00Z",
-        "updatedAt": "2023-10-01T12:00:00Z"
-    }
-    return jsonify(default_content), 200
+    return get_education_content_route(topic)
 
 
 # User Notes endpoints
