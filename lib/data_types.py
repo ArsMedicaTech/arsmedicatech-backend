@@ -1,6 +1,8 @@
 """
 Type definitions for the application.
 """
+from typing import TypedDict
+
 
 class UserID(str):
     """
@@ -35,3 +37,21 @@ class EventData:
         self.sender = sender
         self.text = text
         self.timestamp = timestamp
+
+
+class Feature(TypedDict):
+    title: str
+    description: str
+
+class InformationCard(TypedDict):
+    description: str
+    features: list[Feature]
+
+class EducationContent(TypedDict):
+    title: str
+    url: str
+    type: str
+    category: str
+    informationCard: InformationCard
+    createdAt: str
+    updatedAt: str
