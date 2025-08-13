@@ -1,7 +1,7 @@
 """
 Type definitions for the application.
 """
-from typing import TypedDict
+from typing import List, TypedDict
 
 
 class UserID(str):
@@ -40,14 +40,19 @@ class EventData:
 
 
 class Feature(TypedDict):
+    """A TypedDict for Feature objects in education content."""
     title: str
     description: str
 
-class InformationCard(TypedDict):
-    description: str
-    features: list[Feature]
 
-class EducationContent(TypedDict):
+class InformationCard(TypedDict):
+    """A TypedDict for InformationCard objects in education content."""
+    description: str
+    features: List[Feature]
+
+
+class EducationContentType(TypedDict):
+    """A TypedDict for EducationContent objects, defining the expected structure."""
     title: str
     url: str
     type: str
