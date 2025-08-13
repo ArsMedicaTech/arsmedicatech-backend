@@ -1,11 +1,13 @@
 """
 Test the education content.
 """
-from amt_nano.db.surreal import AsyncDbController
+import asyncio
+import os
+import sys
 
-# Database client
-client = AsyncDbController()
-
+# Add the project root to the Python path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
 
 from lib.models.education import (
     EducationContent,
@@ -15,22 +17,14 @@ from lib.models.education import (
     get_education_content_by_id,
     get_education_content_by_topic,
 )
-from settings import logger
 
 
-def test() -> None:
-    """
-    Test function to demonstrate the functionality of the EducationContent class and database operations.
-    """
-    import asyncio
-    from datetime import datetime, timezone
-
-    async def run_tests() -> None:
-        """
-        Runs a series of tests to demonstrate the functionality of the EducationContent class and database operations.
-        """
-        await client.connect()
-
+def test_education_crud():
+    """Test the education CRUD operations."""
+    print("Testing Education Content CRUD operations...")
+    
+    async def run_tests():
+        """Run the async tests."""
         # Create sample education content
         content = EducationContent(
             title="3D Anatomical Visualization",
@@ -42,35 +36,78 @@ def test() -> None:
                 {"title": "Interactive Models", "description": "Rotate and zoom in on 3D models."},
                 {"title": "Detailed Views", "description": "Examine specific body systems and organs."}
             ],
-            created_at=datetime.now(timezone.utc).isoformat() + "Z",
-            updated_at=datetime.now(timezone.utc).isoformat() + "Z"
+            created_at="2023-10-01T12:00:00Z",
+            updated_at="2023-10-01T12:00:00Z"
         )
-
-        # Create the content
-        content_id = await create_education_content(content)
-        logger.debug(f"Created education content with ID: {content_id}")
-
-        # Retrieve the content by ID
-        retrieved_content = None
-        if content_id is not None:
-            retrieved_content = await get_education_content_by_id(content_id)
-        logger.debug(f"Retrieved content: {retrieved_content}")
-
-        # Search by topic
-        topic_content = await get_education_content_by_topic("Anatomy")
-        logger.debug(f"Content by topic 'Anatomy': {topic_content}")
-
-        # Get all content
-        all_content = await get_all_education_content()
-        logger.debug(f"All education content: {all_content}")
-
-        # Clean up - delete the test content
-        if content_id is not None:
-            deleted = await delete_education_content(content_id)
-            logger.debug(f"Content deleted: {deleted}")
-
+        
+        print(f"Created content object: {content}")
+        
+        try:
+            # Test database operations
+            print("\n1. Testing CREATE operation...")
+            content_id = await create_education_content(content)
+            print(f"Created education content with ID: {content_id}")
+            
+            if content_id:
+                print("\n2. Testing READ operation by ID...")
+                retrieved_content = await get_education_content_by_id(content_id)
+                print(f"Retrieved content by ID: {retrieved_content}")
+                
+                print("\n3. Testing READ operation by topic...")
+                topic_content = await get_education_content_by_topic("Anatomy")
+                print(f"Retrieved content by topic 'Anatomy': {topic_content}")
+                
+                print("\n4. Testing READ all content...")
+                all_content = await get_all_education_content()
+                print(f"All education content count: {len(all_content)}")
+                
+                print("\n5. Testing DELETE operation...")
+                deleted = await delete_education_content(content_id)
+                print(f"Content deleted: {deleted}")
+                
+                # Verify deletion
+                retrieved_after_delete = await get_education_content_by_id(content_id)
+                print(f"Content after deletion: {retrieved_after_delete}")
+                
+            else:
+                print("Failed to create content, skipping other tests")
+                
+        except Exception as e:
+            print(f"Error during testing: {e}")
+            print("This might be expected if the database is not running or configured")
+            raise e
+    
+    # Run the async tests
     asyncio.run(run_tests())
 
 
+def test_education_content_creation():
+    """Test creating education content objects."""
+    print("\nTesting Education Content object creation...")
+    
+    content = EducationContent(
+        title="Test Content",
+        url="https://example.com/test",
+        content_type="test",
+        category="Test",
+        description="Test description",
+        features=[{"title": "Test Feature", "description": "Test feature description"}],
+        created_at="2023-10-01T12:00:00Z",
+        updated_at="2023-10-01T12:00:00Z"
+    )
+    
+    print(f"Created content: {content}")
+    print(f"Content title: {content.title}")
+    print(f"Content category: {content.category}")
+    print(f"Content features count: {len(content.features)}")
+    
+    # Test to_dict method
+    content_dict = content.to_dict()
+    print(f"Content as dict: {content_dict}")
+    
+    print("Education Content object creation test completed!")
+
+
 if __name__ == "__main__":
-    test()
+    test_education_crud()
+    test_education_content_creation()
