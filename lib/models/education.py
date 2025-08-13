@@ -14,7 +14,9 @@ async def get_client() -> AsyncDbController:
     """
     Get the client for the database.
     """
-    return AsyncDbController()
+    client = AsyncDbController()
+    await client.connect()
+    return client
 
 
 class EducationContent:
