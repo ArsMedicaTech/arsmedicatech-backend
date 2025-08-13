@@ -2,18 +2,46 @@
 Routes for the education content.
 """
 
+import asyncio
 from typing import Tuple
 
 from flask import Response, jsonify
 
-from lib.data_types import EducationContent
+from lib.data_types import EducationContentType
+from lib.models.education import get_education_content_by_topic
 
 
 def get_education_content_route(topic: str) -> Tuple[Response, int]:
     """
     Get the education content for a specific topic.
+    First tries to find content in the database, then returns default content if none found.
     """
-    default_content: EducationContent = {
+    # Try to get content from database first
+    try:
+        db_content = asyncio.run(get_education_content_by_topic(topic))
+    except Exception as e:
+        # Log error and fall back to default content
+        print(f"Error fetching education content from database: {e}")
+        db_content = None
+    
+    if db_content:
+        # Convert database content to EducationContent format
+        content: EducationContentType = {
+            "title": db_content.get("title", ""),
+            "url": db_content.get("url", ""),
+            "type": db_content.get("type", ""),
+            "category": db_content.get("category", ""),
+            "informationCard": {
+                "description": db_content.get("informationCard", {}).get("description", ""),
+                "features": db_content.get("informationCard", {}).get("features", [])
+            },
+            "createdAt": db_content.get("createdAt", ""),
+            "updatedAt": db_content.get("updatedAt", "")
+        }
+        return jsonify(content), 200
+    
+    # Return default content if no database content found
+    default_content: EducationContentType = {
         "title": "3D Anatomical Visualization",
         #"url": "https://www.darrenmackenzie.com/threejs/multiaxis_fullscreen",
         "url": "https://www.darrenmackenzie.com/threejs/anatomy_fullscreen",
