@@ -32,6 +32,7 @@ from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.wrappers.response import Response as BaseResponse
 
+from lib.data_types import EducationContent
 from lib.dummy_data import DUMMY_CONVERSATIONS
 from lib.event_handlers import register_event_handlers
 from lib.routes.administration import (
@@ -974,8 +975,7 @@ def get_organization(org_id: str) -> Union[Tuple[Response, int], werkzeug.wrappe
 
         # Only allow alphanumeric, underscore, dash
         if re.fullmatch(r'[\w-]+', org_id):
-            from lib.routes.organizations import \
-                get_organization_by_user_id_route
+            from lib.routes.organizations import get_organization_by_user_id_route
             return get_organization_by_user_id_route(org_id)
         else:
             # Invalid org_id, abort with 400 Bad Request
@@ -1046,7 +1046,7 @@ def get_education_content(topic: str) -> Tuple[Response, int]:
     """
     #from lib.routes.education import get_education_content_route
     #return get_education_content_route(topic)
-    return jsonify({
+    default_content: EducationContent = {
         "title": "3D Anatomical Visualization",
         #"url": "https://www.darrenmackenzie.com/threejs/multiaxis_fullscreen",
         "url": "https://www.darrenmackenzie.com/threejs/anatomy_fullscreen",
@@ -1060,7 +1060,8 @@ def get_education_content(topic: str) -> Tuple[Response, int]:
         },
         "createdAt": "2023-10-01T12:00:00Z",
         "updatedAt": "2023-10-01T12:00:00Z"
-    }), 200
+    }
+    return jsonify(default_content), 200
 
 
 # User Notes endpoints
