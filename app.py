@@ -1516,5 +1516,23 @@ def get_administrators(org_id: str) -> Tuple[Response, int]:
     return get_administrators_route(org_id)
 
 
+@app.route("/healthz")
+def health_check() -> Tuple[Response, int]:
+    """
+    Health check endpoint.
+    :return: Response object indicating the health status.
+    """
+    return jsonify({"status": "healthy"}), 200
+
+
+@app.route("/api/healthz")
+def external_health_check() -> Tuple[Response, int]:
+    """
+    External health check endpoint.
+    :return: Response object indicating the health status externally.
+    """
+    return jsonify({"status": "healthy"}), 200
+
+
 if __name__ == "__main__":
     app.run(port=PORT, debug=DEBUG, host=HOST)
