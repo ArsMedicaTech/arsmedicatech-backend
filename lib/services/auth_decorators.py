@@ -480,6 +480,23 @@ def get_current_user() -> Optional[UserSession]:
     If no user session is found, it returns None.
     :return: Optional[UserSession]: The current user session if available, otherwise None.
     """
+    # Check if we have API key authentication
+    if hasattr(g, "api_key_user_id"):
+        # For API key auth, we need to create a minimal user session object
+        # since we don't have the full user session
+        from lib.models.user.user_session import UserSession
+
+        return UserSession(
+            user_id=g.api_key_user_id,
+            username=f"api_user_{g.api_key_user_id}",  # Placeholder username
+            role="api_user",  # Placeholder role
+            email="",  # Placeholder email
+            created_at="",  # Placeholder
+            last_login="",  # Placeholder
+            is_active=True,
+        )
+
+    # Fall back to regular user session
     return getattr(g, "user_session", None)
 
 
