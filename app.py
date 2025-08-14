@@ -1063,6 +1063,7 @@ def get_organization(
         # Only allow alphanumeric, underscore, dash
         if re.fullmatch(r"[\w-]+", org_id):
             from lib.routes.organizations import get_organization_by_user_id_route
+
             return get_organization_by_user_id_route(org_id)
         else:
             # Invalid org_id, abort with 400 Bad Request
@@ -1137,7 +1138,8 @@ def remove_clinic_from_organization(org_id: str) -> Tuple[Response, int]:
 
     return remove_clinic_from_organization_route(org_id)
 
-@app.route('/api/education/<topic>', methods=['GET'])
+
+@app.route("/api/education/<topic>", methods=["GET"])
 def get_education_content(topic: str) -> Tuple[Response, int]:
     """
     Get educational content for a specific topic.
@@ -1512,6 +1514,24 @@ def get_administrators(org_id: str) -> Tuple[Response, int]:
     :return: Response object with administrators data.
     """
     return get_administrators_route(org_id)
+
+
+@app.route("/healthz")
+def health_check() -> Tuple[Response, int]:
+    """
+    Health check endpoint.
+    :return: Response object indicating the health status.
+    """
+    return jsonify({"status": "healthy"}), 200
+
+
+@app.route("/api/healthz")
+def external_health_check() -> Tuple[Response, int]:
+    """
+    External health check endpoint.
+    :return: Response object indicating the health status externally.
+    """
+    return jsonify({"status": "healthy"}), 200
 
 
 if __name__ == "__main__":
