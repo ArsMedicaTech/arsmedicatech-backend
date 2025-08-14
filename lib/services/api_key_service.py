@@ -135,7 +135,16 @@ class APIKeyService:
                 return False, "No API keys found", None
 
             # Extract API keys from result
-            api_keys_data = result[0].get("result", []) if result[0] else result
+            # Handle different SurrealDB result formats
+            if result and len(result) > 0:
+                if isinstance(result[0], dict) and "result" in result[0]:
+                    # SurrealDB returns [{"result": [actual_data]}]
+                    api_keys_data = result[0]["result"]
+                else:
+                    # SurrealDB returns [actual_data] directly
+                    api_keys_data = result
+            else:
+                api_keys_data = []
 
             for key_data in api_keys_data:
                 api_key_obj = APIKey.from_dict(key_data)
