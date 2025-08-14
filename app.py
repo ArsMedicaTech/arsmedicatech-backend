@@ -131,6 +131,7 @@ from lib.services.auth_decorators import (
     require_api_key,
     require_api_permission,
     require_auth,
+    require_flexible_auth,
 )
 from lib.services.notifications import publish_event_with_buffer
 from lib.services.redis_client import get_redis_connection
@@ -567,10 +568,11 @@ def chat_endpoint() -> Tuple[Response, int]:
 
 
 @app.route("/api/llm_chat", methods=["GET", "POST"])
-@require_auth
+@require_flexible_auth
 def llm_agent_endpoint() -> Tuple[Response, int]:
     """
     Endpoint for LLM agent interactions.
+    Supports both session-based authentication and API key authentication.
     :return: Response object with LLM agent data.
     """
     return llm_agent_endpoint_route()

@@ -9,7 +9,7 @@ from flask import Response, jsonify, request, session
 
 from lib.data_types import UserID
 from lib.llm.agent import LLMAgent, LLMModel
-from lib.services.auth_decorators import get_current_user, require_flexible_auth
+from lib.services.auth_decorators import get_current_user
 from lib.services.llm_chat_service import LLMChatService
 from lib.services.openai_security import get_openai_security_service
 from settings import MCP_URL, logger
@@ -17,7 +17,6 @@ from settings import MCP_URL, logger
 using_v2 = False  # Set to True if using v2 of the LLM agent
 
 
-@require_flexible_auth
 def llm_agent_endpoint_route() -> Tuple[Response, int]:
     """
     Route for the LLM agent endpoint.
