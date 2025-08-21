@@ -6,7 +6,6 @@ import json
 from typing import Any, Dict, List, TypedDict
 
 from amt_nano.db.surreal import AsyncDbController
-
 from settings import logger
 
 
@@ -196,7 +195,7 @@ if __name__ == "__main__":
     logger.debug("DEFINE FIELD address.state ON clinic TYPE string;")
     logger.debug("DEFINE FIELD address.zip ON clinic TYPE string;")
     logger.debug("DEFINE FIELD address.country ON clinic TYPE string;")
-    logger.debug("DEFINE FIELD location ON clinic TYPE geometry (point);")
+    logger.debug("DEFINE FIELD location ON clinic TYPE point;")
     logger.debug("-" * 30)
 
     # Create instances of the Clinic class for some sample clinics.
