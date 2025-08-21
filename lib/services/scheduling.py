@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from amt_nano.db.surreal import DbController
-
 from lib.events import (
     AppointmentCancelled,
     AppointmentCompleted,
@@ -161,7 +160,7 @@ class SchedulingService:
         :return: Appointment object if found, None otherwise
         """
         try:
-            query = "SELECT * FROM appointment WHERE id = $id"
+            query = "SELECT * FROM $id"
             params = {"id": appointment_id}
             results = self.db.query(query, params)
             if results:

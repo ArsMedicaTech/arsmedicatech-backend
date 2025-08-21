@@ -291,7 +291,7 @@ async def get_clinic_by_id(clinic_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         dict: The clinic record if found, otherwise None.
     """
-    query = f"SELECT * FROM clinic WHERE id = '{clinic_id}';"
+    query = f"SELECT * FROM {clinic_id};"
     result = await client.query(query)
     return result[0] if result else None
 
@@ -369,7 +369,7 @@ async def delete_clinic(clinic_id: str) -> bool:
     Returns:
         bool: True if the deletion was successful, False otherwise.
     """
-    query = f"DELETE FROM clinic WHERE id = '{clinic_id}';"
+    query = f"DELETE FROM clinic {clinic_id};"
     result = await client.query(query)
     return len(result) > 0
 

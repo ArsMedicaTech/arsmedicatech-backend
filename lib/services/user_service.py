@@ -6,7 +6,6 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from amt_nano.db.surreal import DbController
-
 from lib.models.user.user import User
 from lib.models.user.user_session import UserSession
 from lib.models.user.user_settings import UserSettings
@@ -79,7 +78,7 @@ class UserService:
         """
         self.db.connect()
         result = self.db.query(
-            "SELECT organization_id FROM User WHERE id = $user_id", {"user_id": user_id}
+            "SELECT organization_id FROM $user_id", {"user_id": user_id}
         )
         if result and len(result) > 0:
             organization_id = result[0].get("organization_id")
