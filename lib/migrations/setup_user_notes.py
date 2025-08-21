@@ -9,7 +9,6 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.surreal import DbController  # type: ignore
-
 from settings import SURREALDB_DATABASE, SURREALDB_NAMESPACE, logger
 
 
@@ -42,7 +41,7 @@ def setup_user_notes_schema() -> bool:
         DEFINE FIELD user_id ON UserNote TYPE string;
         DEFINE FIELD title ON UserNote TYPE string;
         DEFINE FIELD content ON UserNote TYPE string;
-        DEFINE FIELD note_type ON UserNote TYPE string;
+        DEFINE FIELD note_type ON UserNote TYPE "public" | "private";
         DEFINE FIELD tags ON UserNote TYPE array;
         DEFINE FIELD date_created ON UserNote TYPE string;
         DEFINE FIELD date_updated ON UserNote TYPE string;

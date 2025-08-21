@@ -3,7 +3,9 @@ User Notes model.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
+
+UserNoteTypes = Literal["public", "private"]
 
 
 class UserNote:
@@ -16,7 +18,7 @@ class UserNote:
         user_id: str,
         title: str,
         content: str,
-        note_type: str = "private",
+        note_type: UserNoteTypes = "private",
         tags: Optional[List[str]] = None,
         date_created: Optional[str] = None,
         date_updated: Optional[str] = None,
@@ -44,7 +46,7 @@ class UserNote:
         self.id = id
 
     @staticmethod
-    def validate_note_type(note_type: str) -> tuple[bool, str]:
+    def validate_note_type(note_type: UserNoteTypes) -> tuple[bool, str]:
         """
         Validate note type
 
@@ -134,7 +136,7 @@ class UserNote:
         self.title = title
         self.date_updated = datetime.now(timezone.utc).isoformat()
 
-    def update_note_type(self, note_type: str) -> None:
+    def update_note_type(self, note_type: UserNoteTypes) -> None:
         """
         Update note type and set updated timestamp
 
