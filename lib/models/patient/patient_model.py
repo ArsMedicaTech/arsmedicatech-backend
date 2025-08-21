@@ -68,7 +68,9 @@ class Patient:
         statements.append("DEFINE FIELD date_of_birth ON patient TYPE string;")
         statements.append("DEFINE FIELD sex ON patient TYPE string;")
         statements.append("DEFINE FIELD phone ON patient TYPE string;")
-        statements.append("DEFINE FIELD email ON patient TYPE string;")
+        statements.append(
+            "DEFINE FIELD email ON patient TYPE string ASSERT string::is::email($value);"
+        )
         statements.append("DEFINE FIELD location ON patient TYPE array;")
         statements.append("DEFINE FIELD organization_id ON patient TYPE string;")
         statements.append(
