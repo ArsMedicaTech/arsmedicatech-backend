@@ -7,14 +7,13 @@ import json
 from typing import Any, Dict, List, Union, cast
 
 from amt_nano.db.surreal import AsyncDbController, DbController
-from surrealdb import RecordID  # type: ignore[import-untyped]
-
 from lib.models.patient.common import EncounterDict, PatientDict
 from lib.models.patient.encounter_model import Encounter, SOAPNotes
 from lib.models.patient.patient_crud import (
     serialize_patient,  # type: ignore[import-untyped]
 )
 from settings import logger
+from surrealdb import RecordID  # type: ignore[import-untyped]
 
 
 def store_encounter(

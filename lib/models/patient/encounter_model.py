@@ -106,18 +106,14 @@ class Encounter:
         )
 
         statements.append("DEFINE TABLE encounter SCHEMAFULL;")
-        statements.append(
-            "DEFINE FIELD note_id ON encounter TYPE string ASSERT $value != none;"
-        )
+        statements.append("DEFINE FIELD note_id ON encounter TYPE string;")
         statements.append("DEFINE FIELD date_created ON encounter TYPE string;")
         statements.append("DEFINE FIELD provider_id ON encounter TYPE string;")
         statements.append("DEFINE FIELD note_text ON encounter TYPE any;")
         statements.append("DEFINE FIELD note_type ON encounter TYPE string;")
         statements.append("DEFINE FIELD diagnostic_codes ON encounter TYPE array;")
 
-        statements.append(
-            "DEFINE FIELD patient ON encounter TYPE record<patient> ASSERT $value != none;"
-        )
+        statements.append("DEFINE FIELD patient ON encounter TYPE record<patient>;")
 
         # This index is specifically for full-text search on the 'note_text' field.
         # It uses our custom analyzer and enables relevance scoring (BM25) and highlighting.

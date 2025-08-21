@@ -278,20 +278,12 @@ class Appointment:
         statements: List[str] = []
         statements.append("DEFINE TABLE appointment SCHEMAFULL;")
         statements.append(
-            "DEFINE FIELD patient_id ON appointment TYPE record<patient> ASSERT $value != none;"
+            "DEFINE FIELD patient_id ON appointment TYPE record<patient>;"
         )
-        statements.append(
-            "DEFINE FIELD provider_id ON appointment TYPE record<user> ASSERT $value != none;"
-        )
-        statements.append(
-            "DEFINE FIELD appointment_date ON appointment TYPE string ASSERT $value != none;"
-        )
-        statements.append(
-            "DEFINE FIELD start_time ON appointment TYPE string ASSERT $value != none;"
-        )
-        statements.append(
-            "DEFINE FIELD end_time ON appointment TYPE string ASSERT $value != none;"
-        )
+        statements.append("DEFINE FIELD provider_id ON appointment TYPE record<user>;")
+        statements.append("DEFINE FIELD appointment_date ON appointment TYPE string;")
+        statements.append("DEFINE FIELD start_time ON appointment TYPE string;")
+        statements.append("DEFINE FIELD end_time ON appointment TYPE string;")
         statements.append("DEFINE FIELD appointment_type ON appointment TYPE string;")
         statements.append("DEFINE FIELD status ON appointment TYPE string;")
         statements.append("DEFINE FIELD notes ON appointment TYPE string;")

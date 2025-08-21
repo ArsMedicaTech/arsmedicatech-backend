@@ -62,9 +62,7 @@ class Patient:
         """
         statements: List[str] = []
         statements.append("DEFINE TABLE patient SCHEMAFULL;")
-        statements.append(
-            "DEFINE FIELD demographic_no ON patient TYPE string ASSERT $value != none;"
-        )
+        statements.append("DEFINE FIELD demographic_no ON patient TYPE string;")
         statements.append("DEFINE FIELD first_name ON patient TYPE string;")
         statements.append("DEFINE FIELD last_name ON patient TYPE string;")
         statements.append("DEFINE FIELD date_of_birth ON patient TYPE string;")

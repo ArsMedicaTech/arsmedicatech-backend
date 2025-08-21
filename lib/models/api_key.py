@@ -247,12 +247,8 @@ class APIKey:
         """
         statements: List[str] = []
         statements.append("DEFINE TABLE api_key SCHEMAFULL;")
-        statements.append(
-            "DEFINE FIELD name ON api_key TYPE string ASSERT $value != none;"
-        )
-        statements.append(
-            "DEFINE FIELD user_id ON api_key TYPE string ASSERT $value != none;"
-        )
+        statements.append("DEFINE FIELD name ON api_key TYPE string;")
+        statements.append("DEFINE FIELD user_id ON api_key TYPE string;")
         statements.append("DEFINE FIELD key_hash ON api_key TYPE string;")
         statements.append("DEFINE FIELD permissions ON api_key TYPE array;")
         statements.append("DEFINE FIELD rate_limit_per_hour ON api_key TYPE int;")
