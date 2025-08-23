@@ -84,7 +84,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                     LLMAgent.from_mcp(
                         mcp_url=MCP_URL,
                         api_key=openai_api_key,
-                        model=LLMModel.GPT_4_1_NANO,
+                        model=LLMModel.GPT_5_NANO,
                     )
                 )
 
@@ -101,7 +101,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             if not data.get("openai_api_key"):
                 security_service = get_openai_security_service()
                 security_service.log_api_usage(
-                    str(current_user_id), str(LLMModel.GPT_4_1_NANO)
+                    str(current_user_id), str(LLMModel.GPT_5_NANO)
                 )
 
             # Add assistant response to persistent chat

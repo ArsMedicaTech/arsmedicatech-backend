@@ -44,9 +44,13 @@ class LLMModel(enum.Enum):
     Enumeration of supported LLM models.
     """
 
-    GPT_4_1 = "gpt-4.1"
-    GPT_4_1_MINI = "gpt-4.1-mini"
-    GPT_4_1_NANO = "gpt-4.1-nano"
+    GPT_4_1 = "gpt-4.1" # $3.00 / 1M tokens
+    GPT_4_1_MINI = "gpt-4.1-mini" # $0.80 / 1M tokens
+    GPT_4_1_NANO = "gpt-4.1-nano" # $0.20 / 1M tokens
+
+    GPT_5 = "gpt-5" # $1.25 / 1M tokens
+    GPT_5_MINI = "gpt-5-mini" # $0.25 / 1M tokens
+    GPT_5_NANO = "gpt-5-nano" # $0.05 / 1M tokens
 
     def __str__(self) -> str:
         return self.value
@@ -108,7 +112,7 @@ class LLMAgent:
     def __init__(
         self,
         custom_llm_endpoint: Optional[str] = None,
-        model: LLMModel = LLMModel.GPT_4_1_NANO,
+        model: LLMModel = LLMModel.GPT_5_NANO,
         api_key: Optional[str] = None,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         **params: Dict[
@@ -205,7 +209,7 @@ class LLMAgent:
         :param tool_func_dict: Dictionary mapping tool names to their callable functions.
         :return: An instance of LLMAgent with restored state.
         """
-        model_value = data.get("model", LLMModel.GPT_4_1.value)
+        model_value = data.get("model", LLMModel.GPT_5_NANO.value)
         model = LLMModel(model_value)
 
         agent = cls(
@@ -257,7 +261,7 @@ class LLMAgent:
         defs, funcs = await fetch_mcp_tool_defs(mcp_url)
 
         # 2) Instantiate the agent with explicit parameters
-        model_str = model.value if model else LLMModel.GPT_4_1_NANO.value
+        model_str = model.value if model else LLMModel.GPT_5_NANO.value
 
         system_prompt = kwargs.pop("system_prompt", DEFAULT_SYSTEM_PROMPT)
         if isinstance(system_prompt, dict):
