@@ -396,11 +396,15 @@ class LLMAgent:
             logger.info("No active agent manager to close.")
 
     async def complete(
-        self, prompt: Optional[str], **kwargs: Dict[str, str]
+        self,
+        prompt: Optional[str],
+        response_format: Optional[Any] = None,
+        **kwargs: Dict[str, str],
     ) -> Dict[str, Any]:
         """
         Complete a prompt using the LLM, processing any tool calls if necessary.
         :param prompt: The user prompt to send to the LLM. If None, uses the existing message history.
+        :param response_format: The format for the LLM's response (e.g., text, json).
         :param kwargs: Additional parameters for the LLM completion (e.g., temperature, max_tokens).
         :return: Dict containing the LLM's response and tool usage information.
         """
@@ -425,14 +429,18 @@ class LLMAgent:
         logger.debug(f"Making OpenAI API call with {len(self.tool_definitions)} tools")
         logger.debug(f"Tool definitions: {self.tool_definitions}")
 
-        completion = self.client.chat.completions.create(
+        completion = self.client.beta.chat.completions.parse(
             model=self.model.value,
             messages=messages,
-            tools=self.tool_definitions,
+            # OVERRIDE: tools=None,
+            tools=self.tool_definitions,  # type: ignore
+            response_format=response_format,
             # tool_choice="auto",
             # tool_choice='required',
             extra_headers={"x-user-pw": api_key},
         )
+
+        # You tried to pass a `BaseModel` class to `chat.completions.create()`; You must use `beta.chat.completions.parse()` instead
 
         top_choice = completion.choices[0].message
 
