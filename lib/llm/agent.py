@@ -45,13 +45,13 @@ class LLMModel(enum.Enum):
     Enumeration of supported LLM models.
     """
 
-    GPT_4_1 = "gpt-4.1" # $3.00 / 1M tokens
-    GPT_4_1_MINI = "gpt-4.1-mini" # $0.80 / 1M tokens
-    GPT_4_1_NANO = "gpt-4.1-nano" # $0.20 / 1M tokens
+    GPT_4_1 = "gpt-4.1"  # $3.00 / 1M tokens
+    GPT_4_1_MINI = "gpt-4.1-mini"  # $0.80 / 1M tokens
+    GPT_4_1_NANO = "gpt-4.1-nano"  # $0.20 / 1M tokens
 
-    GPT_5 = "gpt-5" # $1.25 / 1M tokens
-    GPT_5_MINI = "gpt-5-mini" # $0.25 / 1M tokens
-    GPT_5_NANO = "gpt-5-nano" # $0.05 / 1M tokens
+    GPT_5 = "gpt-5"  # $1.25 / 1M tokens
+    GPT_5_MINI = "gpt-5-mini"  # $0.25 / 1M tokens
+    GPT_5_NANO = "gpt-5-nano"  # $0.05 / 1M tokens
 
     def __str__(self) -> str:
         return self.value
