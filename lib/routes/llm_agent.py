@@ -12,9 +12,7 @@ from lib.llm.agent import LLMAgent, LLMModel
 from lib.services.auth_decorators import get_current_user
 from lib.services.llm_chat_service import LLMChatService
 from lib.services.openai_security import get_openai_security_service
-from settings import MCP_URL, logger
-
-using_v2 = False  # Set to True if using v2 of the LLM agent
+from settings import AGENT_VERSION, MCP_URL, logger
 
 
 def llm_agent_endpoint_route() -> Tuple[Response, int]:
@@ -77,8 +75,15 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                 UserID(current_user_id), assistant_id, "Me", prompt
             )
 
-            if using_v2:
-                raise NotImplementedError("LLM Agent v2 is not yet implemented")
+            if AGENT_VERSION:
+                # raise NotImplementedError("LLM Agent v2 is not yet implemented")
+                agent = asyncio.run(
+                    LLMAgent.from_mcp_config(
+                        mcp_config=mcp_config,
+                        api_key=openai_api_key,
+                        model=LLMModel.GPT_5_NANO,
+                    )
+                )
             else:
                 agent = asyncio.run(
                     LLMAgent.from_mcp(

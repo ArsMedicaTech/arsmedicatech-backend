@@ -17,3 +17,6 @@ typings/
 
 config/*.apps.googleusercontent.com.json
 config.py
+
+
+mcp_config.json
