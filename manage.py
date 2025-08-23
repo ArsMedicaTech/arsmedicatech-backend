@@ -4,11 +4,7 @@
 import argparse
 import sys
 
-print("Starting manage.py...")
-# Import the main function from your now-import-friendly utility script
-from utils.api_keys.debug_api_key_step_by_step import main as debug_api_key
-
-print("Imported debug_api_key successfully.")
+from utils.api_keys.debug_api_key import main as debug_api_key
 
 
 def main():
