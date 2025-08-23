@@ -19,7 +19,7 @@ from typing import (
 from amt_nano.services.encryption import get_encryption_service
 from openai import OpenAI
 from openai.types.beta.threads.runs import ToolCall
-from openai.types.chat import ChatCompletionMessageToolCall
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionMessageToolCall
 
 from lib.llm.mcp_tools import fetch_mcp_tool_defs
 from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
@@ -57,6 +57,60 @@ class LLMModel(enum.Enum):
 
     def __str__(self) -> str:
         return self.value
+
+
+def to_message_param(
+    msg: Dict[str, Union[str, Sequence[Collection[str]]]],
+) -> ChatCompletionMessageParam:
+    """
+    Convert message_history to ChatCompletionMessageParam format
+    :param msg: The message history to convert
+    :return: The converted message in ChatCompletionMessageParam format
+    """
+    role = msg.get("role")
+    content = msg.get("content")
+    # Handle content that might be a complex type
+    if isinstance(content, str):
+        content_str = content
+    else:
+        content_str = str(content) if content else ""
+    if role == "system":
+        return cast(
+            ChatCompletionMessageParam,
+            {"role": "system", "content": content_str},
+        )
+    elif role == "user":
+        return cast(
+            ChatCompletionMessageParam, {"role": "user", "content": content_str}
+        )
+    elif role == "assistant":
+        # Handle assistant messages with tool calls
+        if "tool_calls" in msg:
+            return cast(
+                ChatCompletionMessageParam,
+                {
+                    "role": "assistant",
+                    "content": content_str,
+                    "tool_calls": msg["tool_calls"],
+                },
+            )
+        else:
+            return cast(
+                ChatCompletionMessageParam,
+                {"role": "assistant", "content": content_str},
+            )
+    elif role == "function":
+        # Convert function role to tool role for API compatibility
+        return cast(
+            ChatCompletionMessageParam,
+            {
+                "role": "tool",
+                "content": content_str,
+                "tool_call_id": msg.get("tool_call_id", ""),
+            },
+        )
+    else:
+        raise ValueError(f"Unknown role: {role}")
 
 
 async def process_tool_call(
@@ -363,57 +417,6 @@ class LLMAgent:
 
         if not api_key:
             raise ValueError("API key is required for LLM access.")
-
-        # Convert message_history to ChatCompletionMessageParam format
-        from openai.types.chat import ChatCompletionMessageParam
-
-        def to_message_param(
-            msg: Dict[str, Union[str, Sequence[Collection[str]]]],
-        ) -> ChatCompletionMessageParam:
-            role = msg.get("role")
-            content = msg.get("content")
-            # Handle content that might be a complex type
-            if isinstance(content, str):
-                content_str = content
-            else:
-                content_str = str(content) if content else ""
-            if role == "system":
-                return cast(
-                    ChatCompletionMessageParam,
-                    {"role": "system", "content": content_str},
-                )
-            elif role == "user":
-                return cast(
-                    ChatCompletionMessageParam, {"role": "user", "content": content_str}
-                )
-            elif role == "assistant":
-                # Handle assistant messages with tool calls
-                if "tool_calls" in msg:
-                    return cast(
-                        ChatCompletionMessageParam,
-                        {
-                            "role": "assistant",
-                            "content": content_str,
-                            "tool_calls": msg["tool_calls"],
-                        },
-                    )
-                else:
-                    return cast(
-                        ChatCompletionMessageParam,
-                        {"role": "assistant", "content": content_str},
-                    )
-            elif role == "function":
-                # Convert function role to tool role for API compatibility
-                return cast(
-                    ChatCompletionMessageParam,
-                    {
-                        "role": "tool",
-                        "content": content_str,
-                        "tool_call_id": msg.get("tool_call_id", ""),
-                    },
-                )
-            else:
-                raise ValueError(f"Unknown role: {role}")
 
         messages: List[ChatCompletionMessageParam] = [
             to_message_param(m) for m in self.message_history
