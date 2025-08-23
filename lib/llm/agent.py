@@ -22,6 +22,7 @@ from openai.types.beta.threads.runs import ToolCall
 from openai.types.chat import ChatCompletionMessageToolCall
 
 from lib.llm.mcp_tools import fetch_mcp_tool_defs
+from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
 from settings import logger
 
 DEFAULT_SYSTEM_PROMPT = """
@@ -136,6 +137,8 @@ class LLMAgent:
 
         self.tool_definitions: List[ToolDefinition] = []
         self.tool_func_dict: Dict[str, Callable[..., Any]] = {}
+
+        self.agent_manager: Optional[HierarchicalAgentManager] = None
 
         self.message_history: List[Dict[str, Union[str, Sequence[Collection[str]]]]] = (
             self.fetch_history()
@@ -284,6 +287,57 @@ class LLMAgent:
         if len(defs) == 0:
             logger.warning("No tools found from MCP server. Tool calls will not work.")
         return agent
+
+    @classmethod
+    async def from_mcp_config(
+        cls,
+        mcp_config: Dict[str, Any],  # Accepts the config dictionary
+        api_key: str,
+        model: Optional[LLMModel] = None,
+        **kwargs: Dict[str, Any],
+    ) -> "LLMAgent":
+        """
+        Builds an LLMAgent with a hierarchical set of tools from a multi-server MCP config.
+        """
+        # 1) Instantiate and connect the HierarchicalAgentManager
+        agent_manager = HierarchicalAgentManager(mcp_config)
+        await agent_manager.connect_and_discover()
+
+        # 2) Instantiate the LLMAgent as before
+        model_str = model.value if model else LLMModel.GPT_5_NANO.value
+        system_prompt = kwargs.pop("system_prompt", DEFAULT_SYSTEM_PROMPT)
+
+        agent = cls(
+            model=LLMModel(model_str),
+            api_key=api_key,
+            system_prompt=system_prompt,
+            **kwargs,
+        )
+
+        # 3) Wire the manager's discovered tools into the agent
+        agent.tool_definitions = agent_manager.openai_defs
+        agent.tool_func_dict = agent_manager.func_lookup
+
+        # 4) Store the manager instance for lifecycle management (e.g., disconnecting)
+        agent.agent_manager = agent_manager
+
+        logger.info(
+            f"LLMAgent initialized with {len(agent.tool_definitions)} hierarchical tools."
+        )
+        if not agent.tool_definitions:
+            logger.warning("No tools were discovered from the MCP configuration.")
+
+        return agent
+
+    async def close(self) -> None:
+        """
+        Gracefully disconnects from any managed MCP servers.
+        """
+        if self.agent_manager:
+            logger.info("Closing connections managed by HierarchicalAgentManager.")
+            await self.agent_manager.disconnect()
+        else:
+            logger.info("No active agent manager to close.")
 
     async def complete(
         self, prompt: Optional[str], **kwargs: Dict[str, str]
