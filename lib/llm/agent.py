@@ -30,8 +30,10 @@ You are a clinical assistant that helps healthcare providers with patient care t
 You can answer questions, provide information, and assist with various healthcare-related tasks.
 Your responses should be accurate, concise, and helpful.
 
-You have access to tools that can help you provide better information. When you need to search for specific information or perform tasks that would benefit from using these tools, please use them. Don't hesitate to use tools when they would be helpful for providing accurate and comprehensive responses.
 """
+
+# For easy debugging comment this out
+DEFAULT_SYSTEM_PROMPT += "You have access to tools that can help you provide better information. When you need to search for specific information or perform tasks that would benefit from using these tools, please use them. Don't hesitate to use tools when they would be helpful for providing accurate and comprehensive responses."  # type: ignore
 
 tools_with_keys = ["rag"]
 
