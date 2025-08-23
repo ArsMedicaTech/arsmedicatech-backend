@@ -97,6 +97,8 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             )  # Remove history parameter as it's not supported
             logger.debug("response", type(response), response)
 
+            asyncio.run(agent.close())
+
             # Log API usage (only if using stored key, not if provided in request)
             if not data.get("openai_api_key"):
                 security_service = get_openai_security_service()
