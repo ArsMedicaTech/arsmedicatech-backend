@@ -4,7 +4,7 @@ Auth routes for handling authentication with AWS Cognito and federated identity 
 
 import base64
 import secrets
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Tuple, TypedDict, Union
 from urllib import parse
 
 import jwt
@@ -12,6 +12,7 @@ import requests
 from flask import Response, jsonify, redirect, request, session
 from werkzeug.wrappers.response import Response as BaseResponse
 
+from lib.models.user.user import User
 from lib.services.user_service import UserService
 from settings import (
     APP_URL,
@@ -135,12 +136,19 @@ def get_token(code):
     return response
 
 
+class CreateUserTuple(TypedDict):
+    success: bool
+    message: str
+    user: User
+
+
 def create_user(
-    user, username: str, email: str, role_from_query: str
+    user: User, username: str, email: str, role_from_query: str
 ) -> Union[bool, Tuple[Response, int]]:
     # Create user with a random password (not used for federated login)
     random_password = secrets.token_urlsafe(16)
-    success, message, user = user_service.create_user(
+
+    result: CreateUserTuple = user_service.create_user(
         username=username,
         email=email,
         password=random_password,
@@ -149,16 +157,21 @@ def create_user(
         role=role_from_query,
         is_federated=True,  # Mark as federated user
     )
-    if not success or not user or not getattr(user, "id", None):
-        logger.error(f"Failed to create user from federated login: {message}")
+    # type: ignore[assignment]  # Optionally, add a type comment if using a type checker
+    if (
+        not result["success"]
+        or not result["user"]
+        or not getattr(result["user"], "id", None)
+    ):
+        logger.error(f"Failed to create user from federated login: {result['message']}")
         return (
-            jsonify({"error": "Failed to create user", "message": message}),
+            jsonify({"error": "Failed to create user", "message": result["message"]}),
             500,
         )
     return True
 
 
-def update_user(user, email: str):
+def update_user(user: User, email: str):
     # User is signing in with existing account - this is fine
     # Note: If Cognito is still returning "email cannot be updated" error,
     # it means the Cognito configuration needs to be updated to remove
@@ -170,7 +183,7 @@ def update_user(user, email: str):
         user_service.update_user(str(user.id), updates)
 
 
-def get_user_response(tokens):
+def get_user_response(tokens: Dict[str, str]) -> Union[Response, Tuple[Response, int]]:
     user_info_url = f"https://{COGNITO_DOMAIN}/oauth2/userInfo"
     headers = {"Authorization": f'Bearer {tokens["access_token"]}'}
 
@@ -192,8 +205,16 @@ def get_user_response(tokens):
         return user_response
 
 
-def get_user_data_from_claims(id_token, user_info: Dict[str, Any]):
-    claims = jwt.decode(id_token, options={"verify_signature": False})
+class Claims(TypedDict):
+    email: str
+    name: str
+    sub: str
+    cognito_username: str
+    username: str
+
+
+def get_user_data_from_claims(id_token: str, user_info: Dict[str, Any]) -> Claims:
+    claims: Claims = jwt.decode(id_token, options={"verify_signature": False})
 
     email = user_info.get("email") or claims.get("email")
     name = user_info.get("name") or claims.get("name", "")
@@ -217,6 +238,7 @@ def get_user_data_from_claims(id_token, user_info: Dict[str, Any]):
 def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
     # Handle error returned from Cognito
     error = request.args.get("error")
+    # WARNING - Cognito auth error: invalid_request - user.email: Attribute cannot be updated.
     error_description = request.args.get("error_description")
 
     err_result = if_error(error, error_description)
@@ -291,12 +313,17 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
                     else:
                         update_user(
                             user,
-                            user_data_from_claims["username"],
                             user_data_from_claims["email"],
-                            role_from_query,
                         )
 
                 # Store user info in session (mimic other routes)
+                if not user or not getattr(user, "id", None):
+                    logger.error("User object is None or missing 'id' after creation")
+                    return (
+                        jsonify({"error": "User object is None or missing 'id'"}),
+                        500,
+                    )
+
                 session["user_id"] = user.id
                 session["auth_token"] = tokens["id_token"]
                 session_token = tokens["id_token"]
