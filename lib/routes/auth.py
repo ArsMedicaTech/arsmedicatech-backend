@@ -172,45 +172,7 @@ def create_user(
             is_federated=True,  # Mark as federated user
         ),
     )
-    # type: ignore[assignment]  # Optionally, add a type comment if using a type checker
-    if (
-        not result["success"]
-        or not result["user"]
-        or not getattr(result["user"], "id", None)
-    ):
-        logger.error(f"Failed to create user from federated login: {result['message']}")
-        result_message = result["message"]
-        return (
-            jsonify(
-                ErrorResponse(
-                    {"error": "Failed to create user", "message": result_message}
-                )
-            ),
-            500,
-        )
 
-    return True
-
-
-def create_user(
-    user: User, username: str, email: str, role_from_query: str
-) -> Union[bool, Tuple[Response, int]]:
-    # Create user with a random password (not used for federated login)
-    random_password = secrets.token_urlsafe(16)
-
-    result: CreateUserResult = cast(
-        CreateUserResult,
-        user_service.create_user(
-            username=username,
-            email=email,
-            password=random_password,
-            first_name="",
-            last_name="",
-            role=role_from_query,
-            is_federated=True,  # Mark as federated user
-        ),
-    )
-    # type: ignore[assignment]  # Optionally, add a type comment if using a type checker
     if (
         not result["success"]
         or not result["user"]
