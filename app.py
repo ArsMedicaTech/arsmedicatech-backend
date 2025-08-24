@@ -186,7 +186,7 @@ app.config["SESSION_TYPE"] = "filesystem"
 if DEBUG:
     app.config.update(
         SESSION_COOKIE_SECURE=False,  # False only on http://localhost
-        SESSION_COOKIE_SAMESITE="Lax",  # 'Lax' if SPA and API are same origin
+        SESSION_COOKIE_SITE="None",
         SESSION_COOKIE_DOMAIN=None,  # No domain set for local development
     )
 else:
