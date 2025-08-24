@@ -4,12 +4,13 @@ Auth routes for handling authentication with AWS Cognito and federated identity 
 
 import base64
 import secrets
-from typing import Any, Dict, Tuple, TypedDict, Union, cast
+from typing import Any, Dict, Optional, Tuple, TypedDict, Union, cast
 from urllib import parse
 
 import jwt
 import requests
 from flask import jsonify, redirect, request, session
+from requests import Response as RequestsResponse
 from werkzeug.wrappers.response import Response as BaseResponse
 
 from lib.models.user.user import User
@@ -236,7 +237,9 @@ def update_user(user: User, email: str):
         user_service.update_user(str(user.id), updates)
 
 
-def get_user_response(tokens: Dict[str, str]) -> Union[Response, Tuple[Response, int]]:
+def get_user_response(
+    tokens: Dict[str, str],
+) -> Union[RequestsResponse, Tuple[Response, int]]:
     user_info_url = f"https://{COGNITO_DOMAIN}/oauth2/userInfo"
     headers = {"Authorization": f'Bearer {tokens["access_token"]}'}
 
@@ -264,28 +267,32 @@ class Claims(TypedDict):
     sub: str
     cognito_username: str
     username: str
+    exp: Optional[str]
 
 
 def get_user_data_from_claims(id_token: str, user_info: Dict[str, Any]) -> Claims:
     claims: Claims = jwt.decode(id_token, options={"verify_signature": False})
 
-    email = user_info.get("email") or claims.get("email")
-    name = user_info.get("name") or claims.get("name", "")
-    sub = claims.get("sub")
-    cognito_username = claims.get("cognito:username")
+    email = user_info.get("email") or claims.get("email") or ""
+    name = user_info.get("name") or claims.get("name", "") or ""
+    sub = claims.get("sub") or ""
+    cognito_username = claims.get("cognito:username") or ""
 
     # Generate a fallback username
     username = (
         cognito_username if cognito_username else generate_safe_username(email, sub)
     )
 
-    return {
-        "email": email,
-        "name": name,
-        "sub": sub,
-        "cognito_username": cognito_username,
-        "username": username,
-    }
+    return Claims(
+        {
+            "email": email,
+            "name": name,
+            "sub": sub,
+            "cognito_username": cognito_username,
+            "username": username,
+            "exp": claims.get("exp"),
+        }
+    )
 
 
 def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
@@ -339,13 +346,23 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
             try:
                 user = user_service.get_user_by_email(user_data_from_claims["email"])
                 if not user:
+                    # Create a dummy User instance to satisfy the type checker
+                    user = User(
+                        id=None,
+                        username=user_data_from_claims["username"],
+                        email=user_data_from_claims["email"],
+                        first_name="",
+                        last_name="",
+                        role=role_from_query,
+                        is_federated=True,
+                    )
                     result = create_user(
                         user,
                         user_data_from_claims["username"],
                         user_data_from_claims["email"],
                         role_from_query,
                     )
-                    if result:
+                    if result is True:
                         logger.info(
                             f"User created successfully: {user_data_from_claims['email']}"
                         )
@@ -390,7 +407,7 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
                     username=user.username,
                     role=role_from_query,
                     session_token=session_token,
-                    expires_at=claims["exp"],
+                    expires_at=user_data_from_claims["exp"],
                 )
                 session.modified = True
 
