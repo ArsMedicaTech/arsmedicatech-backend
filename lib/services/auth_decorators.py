@@ -489,7 +489,7 @@ def get_current_user() -> Optional[UserSession]:
         return UserSession(
             user_id=g.api_key_user_id,
             username=f"api_user_{g.api_key_user_id}",  # Placeholder username
-            role="api_user",  # Placeholder role
+            role="provider",  # Placeholder role
             created_at="",  # Placeholder
         )
 
