@@ -153,7 +153,7 @@ def return_jsonify_error(response: ErrorResponse, status: int) -> Tuple[Response
 
 def create_user(
     user_service: UserService, username: str, email: str, role_from_query: str
-) -> Union[NoneType, Tuple[Response, int]]:
+) -> Union[User, Tuple[Response, int]]:
     # Create user with a random password (not used for federated login)
     random_password = secrets.token_urlsafe(16)
 
@@ -170,18 +170,14 @@ def create_user(
         ),
     )
 
-    if (
-        not result["success"]
-        or not result["user"]
-        or not getattr(result["user"], "id", None)
-    ):
+    if not result["success"] or not result["user"]:
         logger.error(f"Failed to create user from federated login: {result['message']}")
         result_message = result["message"]
         return (
             jsonify({"error": "Failed to create user", "message": result_message}),
             500,
         )
-    return None
+    return result["user"]
 
 
 def update_user(user_service: UserService, user: User, email: str):
@@ -270,10 +266,10 @@ def _handle_existing_user(
 
 def _handle_new_user(
     user_service: UserService, claims: Claims, role_from_query: str
-) -> Union[NoneType, Tuple[Response, int]]:
+) -> Union[User, Tuple[Response, int]]:
     """Creates a new federated user in the database."""
     # The create_user function should return the created User object or an error
-    new_user_or_error: Union[NoneType, Tuple[Response, int]] = create_user(
+    new_user_or_error: Union[User, Tuple[Response, int]] = create_user(
         user_service,
         username=claims["username"],
         email=claims["email"],
@@ -318,12 +314,14 @@ def get_or_create_user(
 def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
     # 1. Handle initial errors from Cognito
     error = request.args.get("error")
+    logger.debug("[DEBUG] 1) Error:", error)
     if error:
         error_description = request.args.get("error_description")
         return if_error(error, error_description)
 
     # 2. Get authorization code
     code = request.args.get("code")
+    logger.debug("[DEBUG] 2) Code:", code)
     if not code:
         logger.error("No authorization code provided")
         return jsonify({"error": "No authorization code provided"}), 400
@@ -343,11 +341,13 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
 
     # 3. Parse state to get role and intent
     state = request.args.get("state", "patient:signin")
+    logger.debug("[DEBUG] 3) State:", state)
     role_from_query, intent = state.split(":", 1) if ":" in state else (state, "signin")
 
     # 4. Get or Create the User
     user_service = UserService()
     user_service.connect()
+    logger.debug("[DEBUG] 4) User Service Connected")
     try:
         user_or_error = get_or_create_user(
             user_service, claims, role_from_query, intent
@@ -372,6 +372,8 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
         # 5. Create Session and Redirect on Success
         session["user_id"] = user.id
         session["auth_token"] = id_token
+
+        logger.debug("[DEBUG] 5) Session Created:", session)
 
         user_service.create_session(
             user_id=user.id,
