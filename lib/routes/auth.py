@@ -46,11 +46,9 @@ def generate_safe_username(email: str, sub: str) -> str:
     return base[:30]
 
 
-def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
-    # Handle error returned from Cognito
-    error = request.args.get("error")
-    error_description = request.args.get("error_description")
-
+def if_error(
+    error: str, error_description: str
+) -> Union[Tuple[Response, int], BaseResponse]:
     if error:
         decoded_description = parse.unquote(error_description or "")
         logger.warning("Cognito auth error: %s - %s", error, decoded_description)
@@ -113,8 +111,8 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
         error_url = f"{APP_URL}?error={error}&error_description={sanitized_description}&suggested_action=home"
         return redirect(error_url)
 
-    code = request.args.get("code")
 
+def get_token(code):
     token_url = f"https://{COGNITO_DOMAIN}/oauth2/token"
 
     auth_string = f"{CLIENT_ID}:{CLIENT_SECRET}"
@@ -133,6 +131,22 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
     }
 
     response = requests.post(token_url, headers=headers, data=body)
+
+    return response
+
+
+def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
+    # Handle error returned from Cognito
+    error = request.args.get("error")
+    error_description = request.args.get("error_description")
+
+    err_result = if_error(error, error_description)
+    if err_result:
+        return err_result
+
+    code = request.args.get("code")
+
+    response = get_token(code)
 
     if response.status_code != 200:
         logger.error(
