@@ -3,7 +3,7 @@ User Service for managing user accounts, authentication, and settings.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict, cast
 
 from amt_nano.db.surreal import DbController
 
@@ -19,6 +19,16 @@ class UserNotAffiliatedError(Exception):
     """
 
     pass
+
+
+class CreateUserResult(TypedDict):
+    success: bool
+    message: str
+    user: Optional[User]
+
+
+class CreateSurrealDbResult(TypedDict):
+    id: str
 
 
 class UserService:
@@ -143,7 +153,7 @@ class UserService:
         last_name: Optional[str] = None,
         role: str = "patient",
         is_federated: bool = False,
-    ) -> tuple[bool, str, Optional[User]]:
+    ) -> CreateUserResult:
         """
         Create a new user account
 
@@ -161,26 +171,30 @@ class UserService:
             # Validate input
             valid, msg = User.validate_username(username)
             if not valid:
-                return False, msg, None
+                return CreateUserResult(success=False, message=msg, user=None)
 
             valid, msg = User.validate_email(email)
             if not valid:
-                return False, msg, None
+                return CreateUserResult(success=False, message=msg, user=None)
 
             if not is_federated:
                 valid, msg = User.validate_password(password)
                 if not valid:
-                    return False, msg, None
+                    return CreateUserResult(success=False, message=msg, user=None)
 
             # Check if username already exists
             existing_user = self.get_user_by_username(username)
             if existing_user:
-                return False, "Username already exists", None
+                return CreateUserResult(
+                    success=False, message="Username already exists", user=None
+                )
 
             # Check if email already exists
             existing_user = self.get_user_by_email(email)
             if existing_user:
-                return False, "Email already exists", None
+                return CreateUserResult(
+                    success=False, message="Email already exists", user=None
+                )
 
             # Create user
             user = User(
@@ -195,11 +209,15 @@ class UserService:
             # Save to database
             logger.debug(f"Creating user with data: {user.to_dict()}")
 
-            result = self.db.create("User", user.to_dict())
+            result = cast(CreateSurrealDbResult, self.db.create("User", user.to_dict()))  # type: ignore
             logger.debug(f"Database create result: {result}")
-            logger.debug(f"Database create result type: {type(result)}")
-            if result and result.get("id"):
+            # logger.debug(f"Database create result type: {type(result)}")
+
+            if result and result["id"]:
                 user.id = result["id"]
+
+                if type(getattr(user, "id")) is not str:
+                    raise TypeError("User ID is not a string")
                 logger.debug(f"User created successfully with ID: {user.id}")
                 logger.debug(f"User ID type: {type(user.id)}")
 
@@ -245,13 +263,21 @@ class UserService:
                             )
                     except Exception as e:
                         logger.error(f"Exception during patient record creation: {e}")
-                return True, "User created successfully", user
+                return CreateUserResult(
+                    success=True, message="User created successfully", user=user
+                )
             else:
                 logger.debug(f"Failed to create user. Result: {result}")
-                return False, "Failed to create user in database", None
+                return CreateUserResult(
+                    success=False,
+                    message="Failed to create user in database",
+                    user=None,
+                )
 
         except Exception as e:
-            return False, f"Error creating user: {str(e)}", None
+            return CreateUserResult(
+                success=False, message=f"Error creating user: {str(e)}", user=None
+            )
 
     def authenticate_user(
         self, username: str, password: str

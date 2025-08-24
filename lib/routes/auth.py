@@ -4,16 +4,16 @@ Auth routes for handling authentication with AWS Cognito and federated identity 
 
 import base64
 import secrets
-from typing import Any, Dict, Tuple, TypedDict, Union
+from typing import Any, Dict, Tuple, TypedDict, Union, cast
 from urllib import parse
 
 import jwt
 import requests
-from flask import Response, jsonify, redirect, request, session
+from flask import jsonify, redirect, request, session
 from werkzeug.wrappers.response import Response as BaseResponse
 
 from lib.models.user.user import User
-from lib.services.user_service import UserService
+from lib.services.user_service import CreateUserResult, UserService
 from settings import (
     APP_URL,
     CLIENT_ID,
@@ -136,10 +136,21 @@ def get_token(code):
     return response
 
 
-class CreateUserTuple(TypedDict):
-    success: bool
+class ErrorOnlyResponse(TypedDict):
+    error: str
+
+
+class ErrorResponse(TypedDict):
+    error: str
     message: str
-    user: User
+
+
+from flask import Response
+
+
+def return_jsonify_error(response: ErrorResponse, status: int) -> Tuple[Response, int]:
+    jsonified = ErrorResponse(error=response["error"], message=response["message"])
+    return jsonify(jsonified), status
 
 
 def create_user(
@@ -148,14 +159,17 @@ def create_user(
     # Create user with a random password (not used for federated login)
     random_password = secrets.token_urlsafe(16)
 
-    result: CreateUserTuple = user_service.create_user(
-        username=username,
-        email=email,
-        password=random_password,
-        first_name="",
-        last_name="",
-        role=role_from_query,
-        is_federated=True,  # Mark as federated user
+    result: CreateUserResult = cast(
+        CreateUserResult,
+        user_service.create_user(
+            username=username,
+            email=email,
+            password=random_password,
+            first_name="",
+            last_name="",
+            role=role_from_query,
+            is_federated=True,  # Mark as federated user
+        ),
     )
     # type: ignore[assignment]  # Optionally, add a type comment if using a type checker
     if (
@@ -164,8 +178,47 @@ def create_user(
         or not getattr(result["user"], "id", None)
     ):
         logger.error(f"Failed to create user from federated login: {result['message']}")
+        result_message = result["message"]
         return (
-            jsonify({"error": "Failed to create user", "message": result["message"]}),
+            jsonify(
+                ErrorResponse(
+                    {"error": "Failed to create user", "message": result_message}
+                )
+            ),
+            500,
+        )
+
+    return True
+
+
+def create_user(
+    user: User, username: str, email: str, role_from_query: str
+) -> Union[bool, Tuple[Response, int]]:
+    # Create user with a random password (not used for federated login)
+    random_password = secrets.token_urlsafe(16)
+
+    result: CreateUserResult = cast(
+        CreateUserResult,
+        user_service.create_user(
+            username=username,
+            email=email,
+            password=random_password,
+            first_name="",
+            last_name="",
+            role=role_from_query,
+            is_federated=True,  # Mark as federated user
+        ),
+    )
+    # type: ignore[assignment]  # Optionally, add a type comment if using a type checker
+    if (
+        not result["success"]
+        or not result["user"]
+        or not getattr(result["user"], "id", None)
+    ):
+        logger.error(f"Failed to create user from federated login: {result['message']}")
+        result_message = result["message"]
+        return (
+            jsonify({"error": "Failed to create user", "message": result_message}),
             500,
         )
     return True
