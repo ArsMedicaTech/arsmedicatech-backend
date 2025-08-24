@@ -27,6 +27,12 @@ class CreateUserResult(TypedDict):
     user: Optional[User]
 
 
+class UpdateUserResult(TypedDict):
+    success: bool
+    message: str
+    user: Optional[User]
+
+
 class CreateSurrealDbResult(TypedDict):
     id: str
 
@@ -503,7 +509,7 @@ class UserService:
             logger.error(f"Error getting all users: {e}")
             return []
 
-    def update_user(self, user_id: str, updates: Dict[str, Any]) -> tuple[bool, str]:
+    def update_user(self, user_id: str, updates: Dict[str, Any]) -> UpdateUserResult:
         """
         Update user information
         :param user_id: ID of the user to update
@@ -518,12 +524,24 @@ class UserService:
 
             result = self.db.update(f"User:{user_id}", updates)
             if result:
-                return True, "User updated successfully"
+                return {
+                    "success": True,
+                    "message": "User updated successfully",
+                    "user": User.from_dict(updates),
+                }
             else:
-                return False, "Failed to update user"
+                return {
+                    "success": False,
+                    "message": "Failed to update user",
+                    "user": None,
+                }
 
         except Exception as e:
-            return False, f"Error updating user: {str(e)}"
+            return {
+                "success": False,
+                "message": f"Error updating user: {str(e)}",
+                "user": None,
+            }
 
     def change_password(
         self, user_id: str, current_password: str, new_password: str

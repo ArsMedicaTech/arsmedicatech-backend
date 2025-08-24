@@ -4,12 +4,13 @@ Auth routes for handling authentication with AWS Cognito and federated identity 
 
 import base64
 import secrets
+from types import NoneType
 from typing import Any, Dict, Optional, Tuple, TypedDict, Union, cast
 from urllib import parse
 
 import jwt
 import requests
-from flask import jsonify, redirect, request, session
+from flask import Response, jsonify, redirect, request, session
 from requests import Response as RequestsResponse
 from werkzeug.wrappers.response import Response as BaseResponse
 
@@ -49,72 +50,71 @@ def generate_safe_username(email: str, sub: str) -> str:
 
 
 def if_error(
-    error: str, error_description: str
+    error: str, error_description: Optional[str]
 ) -> Union[Tuple[Response, int], BaseResponse]:
-    if error:
-        decoded_description = parse.unquote(error_description or "")
-        logger.warning("Cognito auth error: %s - %s", error, decoded_description)
+    decoded_description = parse.unquote(error_description or "")
+    logger.warning("Cognito auth error: %s - %s", error, decoded_description)
 
-        # Get intent from state parameter for error handling
-        state = request.args.get("state", "patient:signin")
-        if ":" in state:
-            _, intent = state.split(":", 1)
+    # Get intent from state parameter for error handling
+    state = request.args.get("state", "patient:signin")
+    if ":" in state:
+        _, intent = state.split(":", 1)
+    else:
+        intent = "signin"  # Default to signin for backward compatibility
+
+    # Handle specific Cognito errors
+    if error == "invalid_request" and "email" in decoded_description.lower():
+        # This is likely the "email cannot be updated" error
+        logger.info("User attempted to sign up with existing email in Cognito")
+
+        # Only show email error for signup intent
+        if intent == "signup":
+            # Redirect to frontend with error parameters
+            error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('Email already exists. Please try signing in instead.')}&suggested_action=login&intent=signup"
+            return redirect(error_url)
         else:
-            intent = "signin"  # Default to signin for backward compatibility
-
-        # Handle specific Cognito errors
-        if error == "invalid_request" and "email" in decoded_description.lower():
-            # This is likely the "email cannot be updated" error
-            logger.info("User attempted to sign up with existing email in Cognito")
-
-            # Only show email error for signup intent
-            if intent == "signup":
-                # Redirect to frontend with error parameters
-                error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('Email already exists. Please try signing in instead.')}&suggested_action=login&intent=signup"
-                return redirect(error_url)
-            else:
-                # For signin intent, this means the user exists in Cognito but there's a linking issue
-                # This typically happens when:
-                # 1. User was created via traditional registration (not Google)
-                # 2. User is trying to sign in with Google for the first time
-                # 3. Cognito can't link the accounts due to email-as-username configuration
-                error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('This email is associated with a traditional account. Please sign in with your username and password instead.')}&suggested_action=home&intent=signin"
-                return redirect(error_url)
-
-        # Handle other common Cognito errors
-        if error == "access_denied":
-            error_url = f"{APP_URL}?error=access_denied&error_description={parse.quote('Access was denied. Please try again.')}&suggested_action=home"
+            # For signin intent, this means the user exists in Cognito but there's a linking issue
+            # This typically happens when:
+            # 1. User was created via traditional registration (not Google)
+            # 2. User is trying to sign in with Google for the first time
+            # 3. Cognito can't link the accounts due to email-as-username configuration
+            error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('This email is associated with a traditional account. Please sign in with your username and password instead.')}&suggested_action=home&intent=signin"
             return redirect(error_url)
 
-        if error == "server_error":
-            error_url = f"{APP_URL}?error=server_error&error_description={parse.quote('Authentication service is temporarily unavailable. Please try again later.')}&suggested_action=home"
-            return redirect(error_url)
-
-        if error == "temporarily_unavailable":
-            error_url = f"{APP_URL}?error=temporarily_unavailable&error_description={parse.quote('Authentication service is temporarily unavailable. Please try again later.')}&suggested_action=home"
-            return redirect(error_url)
-
-        # Default error handling
-        # Whitelist of allowed error types
-        allowed_errors = {
-            "invalid_request",
-            "access_denied",
-            "server_error",
-            "temporarily_unavailable",
-        }
-        if error not in allowed_errors:
-            logger.warning("Unrecognized error type: %s", error)
-            error = "unknown_error"
-            decoded_description = "An unknown error occurred."
-
-        # Sanitize error_description
-        sanitized_description = parse.quote(decoded_description)
-
-        error_url = f"{APP_URL}?error={error}&error_description={sanitized_description}&suggested_action=home"
+    # Handle other common Cognito errors
+    if error == "access_denied":
+        error_url = f"{APP_URL}?error=access_denied&error_description={parse.quote('Access was denied. Please try again.')}&suggested_action=home"
         return redirect(error_url)
 
+    if error == "server_error":
+        error_url = f"{APP_URL}?error=server_error&error_description={parse.quote('Authentication service is temporarily unavailable. Please try again later.')}&suggested_action=home"
+        return redirect(error_url)
 
-def get_token(code):
+    if error == "temporarily_unavailable":
+        error_url = f"{APP_URL}?error=temporarily_unavailable&error_description={parse.quote('Authentication service is temporarily unavailable. Please try again later.')}&suggested_action=home"
+        return redirect(error_url)
+
+    # Default error handling
+    # Whitelist of allowed error types
+    allowed_errors = {
+        "invalid_request",
+        "access_denied",
+        "server_error",
+        "temporarily_unavailable",
+    }
+    if error not in allowed_errors:
+        logger.warning("Unrecognized error type: %s", error)
+        error = "unknown_error"
+        decoded_description = "An unknown error occurred."
+
+    # Sanitize error_description
+    sanitized_description = parse.quote(decoded_description)
+
+    error_url = f"{APP_URL}?error={error}&error_description={sanitized_description}&suggested_action=home"
+    return redirect(error_url)
+
+
+def get_token(code: str) -> RequestsResponse:
     token_url = f"https://{COGNITO_DOMAIN}/oauth2/token"
 
     auth_string = f"{CLIENT_ID}:{CLIENT_SECRET}"
@@ -125,7 +125,7 @@ def get_token(code):
         "Authorization": f"Basic {auth_header}",
     }
 
-    body = {
+    body: Dict[str, str] = {
         "grant_type": "authorization_code",
         "client_id": CLIENT_ID,
         "code": code,
@@ -146,23 +146,20 @@ class ErrorResponse(TypedDict):
     message: str
 
 
-from flask import Response
-
-
 def return_jsonify_error(response: ErrorResponse, status: int) -> Tuple[Response, int]:
     jsonified = ErrorResponse(error=response["error"], message=response["message"])
     return jsonify(jsonified), status
 
 
 def create_user(
-    user: User, username: str, email: str, role_from_query: str
-) -> Union[bool, Tuple[Response, int]]:
+    user_service: UserService, username: str, email: str, role_from_query: str
+) -> Union[NoneType, Tuple[Response, int]]:
     # Create user with a random password (not used for federated login)
     random_password = secrets.token_urlsafe(16)
 
     result: CreateUserResult = cast(
         CreateUserResult,
-        user_service.create_user(
+        user_service.create_user(  # type: ignore
             username=username,
             email=email,
             password=random_password,
@@ -184,10 +181,10 @@ def create_user(
             jsonify({"error": "Failed to create user", "message": result_message}),
             500,
         )
-    return True
+    return None
 
 
-def update_user(user: User, email: str):
+def update_user(user_service: UserService, user: User, email: str):
     # User is signing in with existing account - this is fine
     # Note: If Cognito is still returning "email cannot be updated" error,
     # it means the Cognito configuration needs to be updated to remove
@@ -263,11 +260,14 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
     # WARNING - Cognito auth error: invalid_request - user.email: Attribute cannot be updated.
     error_description = request.args.get("error_description")
 
-    err_result = if_error(error, error_description)
-    if err_result:
-        return err_result
+    if error:
+        return if_error(error, error_description)
 
     code = request.args.get("code")
+
+    if not code:
+        logger.error("No authorization code provided")
+        return jsonify({"error": "No authorization code provided"}), 400
 
     response = get_token(code)
 
@@ -318,21 +318,21 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
                         role=role_from_query,
                         is_federated=True,
                     )
-                    result = create_user(
-                        user,
+                    error_response = create_user(
+                        user_service,
                         user_data_from_claims["username"],
                         user_data_from_claims["email"],
                         role_from_query,
                     )
-                    if result is True:
-                        logger.info(
-                            f"User created successfully: {user_data_from_claims['email']}"
-                        )
-                    else:
+                    if error_response:
                         logger.error(
                             f"Failed to create user: {user_data_from_claims['email']}"
                         )
-                        return result
+                        return error_response
+                    else:
+                        logger.info(
+                            f"User created successfully: {user_data_from_claims['email']}"
+                        )
                 else:
                     # User exists in our database - check intent
                     if intent == "signup":
@@ -344,6 +344,7 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
                         return redirect(error_url)
                     else:
                         update_user(
+                            user_service,
                             user,
                             user_data_from_claims["email"],
                         )
