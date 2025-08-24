@@ -254,138 +254,133 @@ def get_user_data_from_claims(id_token: str, user_info: Dict[str, Any]) -> Claim
     )
 
 
-def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
-    # Handle error returned from Cognito
-    error = request.args.get("error")
-    # WARNING - Cognito auth error: invalid_request - user.email: Attribute cannot be updated.
-    error_description = request.args.get("error_description")
+def _handle_existing_user(
+    user: User, intent: str, user_service: UserService, claims: Claims
+) -> Optional[ErrorResponse]:
+    """Handles logic for a user that already exists in the database."""
+    if intent == "signup":
+        logger.info(f"User attempted to sign up with existing email: {claims['email']}")
+        error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('This email address is already registered.')}"
+        return redirect(error_url)
+    else:
+        # It's a sign-in, so update their info from the claims
+        update_user(user_service, user, claims["email"])
+        return None  # Return None on success
 
+
+def _handle_new_user(
+    user_service: UserService, claims: Claims, role_from_query: str
+) -> Union[NoneType, Tuple[Response, int]]:
+    """Creates a new federated user in the database."""
+    # The create_user function should return the created User object or an error
+    new_user_or_error: Union[NoneType, Tuple[Response, int]] = create_user(
+        user_service,
+        username=claims["username"],
+        email=claims["email"],
+        role_from_query=role_from_query,
+    )
+
+    if isinstance(new_user_or_error, User):
+        logger.info(f"User created successfully: {claims['email']}")
+        return new_user_or_error
+    else:
+        # create_user returned an error
+        logger.error(f"Failed to create user: {claims['email']}")
+        return new_user_or_error
+
+
+def get_or_create_user(
+    user_service: UserService,
+    claims: Claims,
+    role: str,
+    intent: str,
+) -> Union[User, Union[NoneType, Tuple[Response, int]], Optional[ErrorResponse]]:
+    """
+    Gets a user by email. If they exist, handles update or conflict.
+    If they don't exist, creates them.
+    """
+    user = user_service.get_user_by_email(claims["email"])
+
+    if user:
+        # User exists, handle sign-in or sign-up conflict
+        error = _handle_existing_user(user, intent, user_service, claims)
+        if error:
+            return error
+        return user  # Return the existing user on success
+    else:
+        # User does not exist, create them
+        return _handle_new_user(user_service, claims, role)
+
+
+def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
+    # 1. Handle initial errors from Cognito
+    error = request.args.get("error")
     if error:
+        error_description = request.args.get("error_description")
         return if_error(error, error_description)
 
+    # 2. Get authorization code
     code = request.args.get("code")
-
     if not code:
         logger.error("No authorization code provided")
         return jsonify({"error": "No authorization code provided"}), 400
 
-    response = get_token(code)
+    # (Let's assume get_token, get_user_response etc. are refactored into helpers
+    # that raise exceptions on failure for clarity)
+    try:
+        tokens = get_token(code)
+        user_info: Claims = get_user_data_from_claims(tokens["id_token"])
+        claims = get_user_data_from_claims(tokens["id_token"], user_info)
+    except Exception as e:
+        logger.error(f"Failed during token exchange or user info retrieval: {e}")
+        return jsonify({"error": "Authentication failed"}), 500
 
-    if response.status_code != 200:
-        logger.error(
-            "Token exchange failed: %s - %s", response.status_code, response.text
+    # 3. Parse state to get role and intent
+    state = request.args.get("state", "patient:signin")
+    role_from_query, intent = state.split(":", 1) if ":" in state else (state, "signin")
+
+    # 4. Get or Create the User
+    user_service = UserService()
+    user_service.connect()
+    try:
+        user_or_error = get_or_create_user(
+            user_service, claims, role_from_query, intent
         )
-        return jsonify({"status": response.status_code, "message": response.text}), 400
 
-    if response.status_code == 200:
-        tokens = response.json()
+        # --- TYPE NARROWING ---
+        # We explicitly check the type of the return value.
+        if not isinstance(user_or_error, User):
+            # MyPy knows this is an ErrorResponse, so we can return it.
+            return user_or_error
 
-        user_response = get_user_response(tokens)
-        if isinstance(user_response, tuple):
-            return user_response
+        # From this point on, MyPy knows we have a valid User object.
+        user = user_or_error
 
-        if user_response.status_code == 200:
-            user_info = user_response.json()
-            id_token = tokens["id_token"]
+        if not user.id:
+            logger.error("User ID is missing after creation/retrieval")
+            return jsonify({"error": "User ID is missing"}), 500
 
-            user_data_from_claims = get_user_data_from_claims(id_token, user_info)
+        # 5. Create Session and Redirect on Success
+        session["user_id"] = user.id
+        session["auth_token"] = tokens["id_token"]
 
-            if not user_data_from_claims["username"]:
-                logger.error("Could not determine username from federated identity")
-                return jsonify({"error": "Unable to derive username"}), 500
+        user_service.create_session(
+            user_id=user.id,
+            username=user.username,
+            role=role_from_query,
+            session_token=tokens["id_token"],
+            expires_at=claims["exp"],
+        )
+        session.modified = True
 
-            # Get role and intent from state parameter
-            state = request.args.get("state", "patient:signin")
-            if ":" in state:
-                role_from_query, intent = state.split(":", 1)
-            else:
-                # Fallback for backward compatibility
-                role_from_query = state
-                intent = "signin"
+        success_url = f"{APP_URL}?auth_success=true&token={session['auth_token']}&user_id={user.id}&username={user.username}&role={role_from_query}"
+        return redirect(success_url)
 
-            user_service = UserService()
-            user_service.connect()
-            try:
-                user = user_service.get_user_by_email(user_data_from_claims["email"])
-                if not user:
-                    # Create a dummy User instance to satisfy the type checker
-                    user = User(
-                        id=None,
-                        username=user_data_from_claims["username"],
-                        email=user_data_from_claims["email"],
-                        first_name="",
-                        last_name="",
-                        role=role_from_query,
-                        is_federated=True,
-                    )
-                    error_response = create_user(
-                        user_service,
-                        user_data_from_claims["username"],
-                        user_data_from_claims["email"],
-                        role_from_query,
-                    )
-                    if error_response:
-                        logger.error(
-                            f"Failed to create user: {user_data_from_claims['email']}"
-                        )
-                        return error_response
-                    else:
-                        logger.info(
-                            f"User created successfully: {user_data_from_claims['email']}"
-                        )
-                else:
-                    # User exists in our database - check intent
-                    if intent == "signup":
-                        # User tried to sign up but account already exists
-                        logger.info(
-                            f"User attempted to sign up with existing email: {user_data_from_claims['email']}"
-                        )
-                        error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('This email address is already registered. Please try signing in instead.')}&suggested_action=login&intent=signup"
-                        return redirect(error_url)
-                    else:
-                        update_user(
-                            user_service,
-                            user,
-                            user_data_from_claims["email"],
-                        )
-
-                # Store user info in session (mimic other routes)
-                if not user or not getattr(user, "id", None):
-                    logger.error("User object is None or missing 'id' after creation")
-                    return (
-                        jsonify({"error": "User object is None or missing 'id'"}),
-                        500,
-                    )
-
-                session["user_id"] = user.id
-                session["auth_token"] = tokens["id_token"]
-                session_token = tokens["id_token"]
-
-                if not user.id:
-                    logger.error("User ID is missing after creation")
-                    return jsonify({"error": "User ID is missing"}), 500
-
-                user_service.create_session(
-                    user_id=user.id,
-                    username=user.username,
-                    role=role_from_query,
-                    session_token=session_token,
-                    expires_at=user_data_from_claims["exp"],
-                )
-                session.modified = True
-
-                # Return a success response with token information for the frontend
-                # The frontend will handle storing the token in localStorage
-                success_url = f"{APP_URL}?auth_success=true&token={session_token}&user_id={user.id}&username={user.username}&role={role_from_query}"
-                return redirect(success_url)
-            except Exception as e:
-                logger.error("Failed to create/update user in database: %s", e)
-                session["user"] = user_info
-                return redirect(APP_URL)
-            finally:
-                user_service.close()
-
-    return jsonify({"error": "Unknown error occurred during authentication"}), 500
+    except Exception as e:
+        logger.error(f"Unhandled error in user processing: {e}")
+        return redirect(APP_URL + "?error=server_error")
+    finally:
+        user_service.close()
 
 
 def auth_logout_route() -> BaseResponse:
