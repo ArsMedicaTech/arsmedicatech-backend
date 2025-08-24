@@ -12,6 +12,7 @@ from typing import (
     List,
     Optional,
     Sequence,
+    TypedDict,
     Union,
     cast,
 )
@@ -40,6 +41,19 @@ tools_with_keys = ["rag"]
 from openai.types.chat import ChatCompletionToolParam
 
 ToolDefinition = ChatCompletionToolParam
+
+
+class LLMKwargs(TypedDict, total=False):
+    model: str
+    messages: List[ChatCompletionMessageParam]
+
+    tools: List[ToolDefinition]  # type: ignore
+    tool_choice: Optional[str]
+
+    response_format: Optional[Any]
+
+    extra_headers: Dict[str, str]
+    # Add other parameters as needed
 
 
 class LLMModel(enum.Enum):
@@ -152,6 +166,8 @@ async def process_tool_call(
         tool_result = await tool_function(**arguments)
 
     result = json.dumps(tool_result)
+
+    print(f"Tool result: {result}")
 
     return {
         "role": "function",
@@ -429,7 +445,7 @@ class LLMAgent:
         logger.debug(f"Making OpenAI API call with {len(self.tool_definitions)} tools")
         logger.debug(f"Tool definitions: {self.tool_definitions}")
 
-        completion = self.client.beta.chat.completions.parse(
+        llm_kwargs = LLMKwargs(
             model=self.model.value,
             messages=messages,
             # OVERRIDE: tools=None,
@@ -439,6 +455,13 @@ class LLMAgent:
             # tool_choice='required',
             extra_headers={"x-user-pw": api_key},
         )
+
+        if not response_format:
+            llm_func: Callable[..., Any] = self.client.chat.completions.create  # type: ignore
+        else:
+            llm_func: Callable[..., Any] = self.client.beta.chat.completions.parse  # type: ignore
+
+        completion = llm_func(**llm_kwargs)
 
         # You tried to pass a `BaseModel` class to `chat.completions.create()`; You must use `beta.chat.completions.parse()` instead
 
