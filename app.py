@@ -1202,7 +1202,7 @@ def delete_note(note_id: str) -> Tuple[Response, int]:
     return delete_note_route(note_id)
 
 
-@app.route("/auth/login/cognito")
+@app.route("/api/auth/login/cognito")
 def login_cognito():
     role = request.args.get("role", "patient")
     intent = request.args.get("intent", "signin")
@@ -1294,7 +1294,7 @@ def test_auth_error():
     return redirect(error_url)
 
 
-@app.route("/auth/logout", methods=["GET"])
+@app.route("/api/auth/logout", methods=["GET"])
 def auth_logout() -> BaseResponse:
     """
     Logout endpoint.
