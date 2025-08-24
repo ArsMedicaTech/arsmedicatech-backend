@@ -229,11 +229,11 @@ class Claims(TypedDict):
     exp: Optional[str]
 
 
-def get_user_data_from_claims(id_token: str, user_info: Dict[str, Any]) -> Claims:
+def get_user_data_from_claims(id_token: str) -> Claims:
     claims: Claims = jwt.decode(id_token, options={"verify_signature": False})
 
-    email = user_info.get("email") or claims.get("email") or ""
-    name = user_info.get("name") or claims.get("name", "") or ""
+    email = claims.get("email") or ""
+    name = claims.get("name", "") or ""
     sub = claims.get("sub") or ""
     cognito_username = claims.get("cognito:username") or ""
 
@@ -256,7 +256,7 @@ def get_user_data_from_claims(id_token: str, user_info: Dict[str, Any]) -> Claim
 
 def _handle_existing_user(
     user: User, intent: str, user_service: UserService, claims: Claims
-) -> Optional[ErrorResponse]:
+) -> Optional[BaseResponse]:
     """Handles logic for a user that already exists in the database."""
     if intent == "signup":
         logger.info(f"User attempted to sign up with existing email: {claims['email']}")
@@ -289,12 +289,15 @@ def _handle_new_user(
         return new_user_or_error
 
 
+UserOrError = Union[User, Union[NoneType, Tuple[Response, int]], Optional[BaseResponse]]
+
+
 def get_or_create_user(
     user_service: UserService,
     claims: Claims,
     role: str,
     intent: str,
-) -> Union[User, Union[NoneType, Tuple[Response, int]], Optional[ErrorResponse]]:
+) -> UserOrError:
     """
     Gets a user by email. If they exist, handles update or conflict.
     If they don't exist, creates them.
@@ -328,9 +331,12 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
     # (Let's assume get_token, get_user_response etc. are refactored into helpers
     # that raise exceptions on failure for clarity)
     try:
-        tokens = get_token(code)
-        user_info: Claims = get_user_data_from_claims(tokens["id_token"])
-        claims = get_user_data_from_claims(tokens["id_token"], user_info)
+        tokens_response = get_token(code)
+        if tokens_response.status_code != 200:
+            logger.error(f"Failed to retrieve tokens: {tokens_response.text}")
+            return jsonify({"error": "Failed to retrieve tokens"}), 500
+        id_token = tokens_response.json()["id_token"]
+        claims: Claims = get_user_data_from_claims(id_token)
     except Exception as e:
         logger.error(f"Failed during token exchange or user info retrieval: {e}")
         return jsonify({"error": "Authentication failed"}), 500
@@ -347,14 +353,17 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
             user_service, claims, role_from_query, intent
         )
 
-        # --- TYPE NARROWING ---
         # We explicitly check the type of the return value.
         if not isinstance(user_or_error, User):
-            # MyPy knows this is an ErrorResponse, so we can return it.
-            return user_or_error
+            # Union[User, Union[NoneType, Tuple[Response, int]], Optional[ErrorResponse]]
+            if user_or_error is None:
+                logger.error("User creation failed with unknown error")
+                return jsonify({"error": "User creation failed"}), 500
+            elif isinstance(user_or_error, Tuple):
+                # Handle specific error responses
+                return user_or_error
 
-        # From this point on, MyPy knows we have a valid User object.
-        user = user_or_error
+        user: User = cast(User, user_or_error)
 
         if not user.id:
             logger.error("User ID is missing after creation/retrieval")
@@ -362,13 +371,13 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
 
         # 5. Create Session and Redirect on Success
         session["user_id"] = user.id
-        session["auth_token"] = tokens["id_token"]
+        session["auth_token"] = id_token
 
         user_service.create_session(
             user_id=user.id,
             username=user.username,
             role=role_from_query,
-            session_token=tokens["id_token"],
+            session_token=id_token,
             expires_at=claims["exp"],
         )
         session.modified = True
