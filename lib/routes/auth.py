@@ -135,6 +135,85 @@ def get_token(code):
     return response
 
 
+def create_user(
+    user, username: str, email: str, role_from_query: str
+) -> Union[bool, Tuple[Response, int]]:
+    # Create user with a random password (not used for federated login)
+    random_password = secrets.token_urlsafe(16)
+    success, message, user = user_service.create_user(
+        username=username,
+        email=email,
+        password=random_password,
+        first_name="",
+        last_name="",
+        role=role_from_query,
+        is_federated=True,  # Mark as federated user
+    )
+    if not success or not user or not getattr(user, "id", None):
+        logger.error(f"Failed to create user from federated login: {message}")
+        return (
+            jsonify({"error": "Failed to create user", "message": message}),
+            500,
+        )
+    return True
+
+
+def update_user(user, email: str):
+    # User is signing in with existing account - this is fine
+    # Note: If Cognito is still returning "email cannot be updated" error,
+    # it means the Cognito configuration needs to be updated to remove
+    # UsernameAttributes: [email] from the User Pool configuration
+    logger.info(f"Existing user logged in via federated identity: {email}")
+    # Optionally update user info if changed
+    updates: Dict[str, Any] = {}
+    if updates and user.id is not None:
+        user_service.update_user(str(user.id), updates)
+
+
+def get_user_response(tokens):
+    user_info_url = f"https://{COGNITO_DOMAIN}/oauth2/userInfo"
+    headers = {"Authorization": f'Bearer {tokens["access_token"]}'}
+
+    user_response = requests.get(user_info_url, headers=headers)
+
+    if user_response.status_code != 200:
+        logger.error(
+            "Failed to fetch user info: %s - %s",
+            user_response.status_code,
+            user_response.text,
+        )
+        return (
+            jsonify(
+                {"status": user_response.status_code, "message": user_response.text}
+            ),
+            400,
+        )
+    else:
+        return user_response
+
+
+def get_user_data_from_claims(id_token, user_info: Dict[str, Any]):
+    claims = jwt.decode(id_token, options={"verify_signature": False})
+
+    email = user_info.get("email") or claims.get("email")
+    name = user_info.get("name") or claims.get("name", "")
+    sub = claims.get("sub")
+    cognito_username = claims.get("cognito:username")
+
+    # Generate a fallback username
+    username = (
+        cognito_username if cognito_username else generate_safe_username(email, sub)
+    )
+
+    return {
+        "email": email,
+        "name": name,
+        "sub": sub,
+        "cognito_username": cognito_username,
+        "username": username,
+    }
+
+
 def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
     # Handle error returned from Cognito
     error = request.args.get("error")
@@ -157,44 +236,17 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
     if response.status_code == 200:
         tokens = response.json()
 
-        user_info_url = f"https://{COGNITO_DOMAIN}/oauth2/userInfo"
-        headers = {"Authorization": f'Bearer {tokens["access_token"]}'}
-
-        user_response = requests.get(user_info_url, headers=headers)
-
-        if user_response.status_code != 200:
-            logger.error(
-                "Failed to fetch user info: %s - %s",
-                user_response.status_code,
-                user_response.text,
-            )
-            return (
-                jsonify(
-                    {"status": user_response.status_code, "message": user_response.text}
-                ),
-                400,
-            )
+        user_response = get_user_response(tokens)
+        if isinstance(user_response, tuple):
+            return user_response
 
         if user_response.status_code == 200:
             user_info = user_response.json()
-
             id_token = tokens["id_token"]
 
-            claims = jwt.decode(id_token, options={"verify_signature": False})
+            user_data_from_claims = get_user_data_from_claims(id_token, user_info)
 
-            email = user_info.get("email") or claims.get("email")
-            name = user_info.get("name") or claims.get("name", "")
-            sub = claims.get("sub")
-            cognito_username = claims.get("cognito:username")
-
-            # Generate a fallback username
-            username = (
-                cognito_username
-                if cognito_username
-                else generate_safe_username(email, sub)
-            )
-
-            if not username:
+            if not user_data_from_claims["username"]:
                 logger.error("Could not determine username from federated identity")
                 return jsonify({"error": "Unable to derive username"}), 500
 
@@ -210,50 +262,39 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
             user_service = UserService()
             user_service.connect()
             try:
-                user = user_service.get_user_by_email(email)
+                user = user_service.get_user_by_email(user_data_from_claims["email"])
                 if not user:
-                    # Create user with a random password (not used for federated login)
-                    random_password = secrets.token_urlsafe(16)
-                    success, message, user = user_service.create_user(
-                        username=username,
-                        email=email,
-                        password=random_password,
-                        first_name="",
-                        last_name="",
-                        role=role_from_query,
-                        is_federated=True,  # Mark as federated user
+                    result = create_user(
+                        user,
+                        user_data_from_claims["username"],
+                        user_data_from_claims["email"],
+                        role_from_query,
                     )
-                    if not success or not user or not getattr(user, "id", None):
+                    if result:
+                        logger.info(
+                            f"User created successfully: {user_data_from_claims['email']}"
+                        )
+                    else:
                         logger.error(
-                            f"Failed to create user from federated login: {message}"
+                            f"Failed to create user: {user_data_from_claims['email']}"
                         )
-                        return (
-                            jsonify(
-                                {"error": "Failed to create user", "message": message}
-                            ),
-                            500,
-                        )
+                        return result
                 else:
                     # User exists in our database - check intent
                     if intent == "signup":
                         # User tried to sign up but account already exists
                         logger.info(
-                            f"User attempted to sign up with existing email: {email}"
+                            f"User attempted to sign up with existing email: {user_data_from_claims['email']}"
                         )
                         error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('This email address is already registered. Please try signing in instead.')}&suggested_action=login&intent=signup"
                         return redirect(error_url)
                     else:
-                        # User is signing in with existing account - this is fine
-                        # Note: If Cognito is still returning "email cannot be updated" error,
-                        # it means the Cognito configuration needs to be updated to remove
-                        # UsernameAttributes: [email] from the User Pool configuration
-                        logger.info(
-                            f"Existing user logged in via federated identity: {email}"
+                        update_user(
+                            user,
+                            user_data_from_claims["username"],
+                            user_data_from_claims["email"],
+                            role_from_query,
                         )
-                        # Optionally update user info if changed
-                        updates: Dict[str, Any] = {}
-                        if updates and user.id is not None:
-                            user_service.update_user(str(user.id), updates)
 
                 # Store user info in session (mimic other routes)
                 session["user_id"] = user.id
