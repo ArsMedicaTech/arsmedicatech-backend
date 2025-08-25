@@ -255,9 +255,12 @@ def _handle_existing_user(
 ) -> Optional[BaseResponse]:
     """Handles logic for a user that already exists in the database."""
     if intent == "signup":
-        logger.info(f"User attempted to sign up with existing email: {claims['email']}")
-        error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('This email address is already registered.')}"
-        return redirect(error_url)
+        # TODO: TEMP TESTING - LEAVE THIS HERE IN CASE WE WANT TO SWITCH BACK OR CHANGE THE LOGIC.
+        # logger.info(f"User attempted to sign up with existing email: {claims['email']}")
+        # error_url = f"{APP_URL}?error=invalid_request&error_description={parse.quote('This email address is already registered.')}"
+        # return redirect(error_url)
+        # I think it makes way more sense to simply redirect them as though they signed in.
+        return None
     else:
         # It's a sign-in, so update their info from the claims
         update_user(user_service, user, claims["email"])
@@ -298,6 +301,8 @@ def get_or_create_user(
     Gets a user by email. If they exist, handles update or conflict.
     If they don't exist, creates them.
     """
+    print("WE ARE IN GET OR CREATE USER")
+    print(intent, claims)
     user = user_service.get_user_by_email(claims["email"])
 
     if user:
@@ -312,6 +317,7 @@ def get_or_create_user(
 
 
 def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
+    print("WHAT THE FUCK", request.args)
     # 1. Handle initial errors from Cognito
     error = request.args.get("error")
     logger.debug("[DEBUG] 1) Error:", error)
