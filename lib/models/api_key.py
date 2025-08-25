@@ -229,6 +229,11 @@ class APIKey:
             "admin:read",
             "admin:write",
             "admin:delete",
+            # LLM-specific permissions
+            "llm:chat",
+            "llm:read",
+            "llm:write",
+            "llm:delete",
         }
 
         for permission in permissions:

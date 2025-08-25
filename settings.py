@@ -133,3 +133,14 @@ print("REDIRECT URI:", REDIRECT_URI)
 print("COGNITO LOGIN URL:", COGNITO_LOGIN_URL)
 
 print("APP URL:", APP_URL)
+
+
+AGENT_VERSION = os.environ.get("AGENT_VERSION", "v2")
+
+
+mcp_config = None
+
+if AGENT_VERSION == "v2":
+    import json
+
+    mcp_config = json.loads(open("mcp_config.json").read())

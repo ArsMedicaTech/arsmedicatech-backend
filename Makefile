@@ -23,6 +23,10 @@ local-encryption-key:
 
 
 
+mypy:
+	mypy --explicit-package-bases lib settings.py
+
+
 # Docker
 auth:
 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(DOCKER_REGISTRY)

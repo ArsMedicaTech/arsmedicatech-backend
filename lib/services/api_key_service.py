@@ -2,6 +2,7 @@
 API Key Service for managing 3rd party API access
 """
 
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -89,7 +90,7 @@ class APIKeyService:
 
             # Store in database
             self.connect()
-            record_id = f"api_key:{api_key_obj.id or 'temp'}"
+            record_id = f"api_key:{api_key_obj.id or 'temp' + secrets.token_hex(8)}"
             content_data = api_key_obj.to_dict()
 
             query = f"CREATE {record_id} CONTENT $data"
@@ -98,6 +99,12 @@ class APIKeyService:
             result = self.db.query(query, params)
 
             if result and len(result) > 0:
+                if "already exists" in str(result):
+                    logger.warning(
+                        f"API key '{name}' for user {user_id} already exists"
+                    )
+                    return False, "API key already exists", None
+
                 # Extract the created record ID
                 created_record = result[0]
                 if "result" in created_record and created_record["result"]:
@@ -135,7 +142,10 @@ class APIKeyService:
                 return False, "No API keys found", None
 
             # Extract API keys from result
-            api_keys_data = result[0].get("result", []) if result[0] else result
+            if result and len(result) > 0:
+                api_keys_data = result
+            else:
+                api_keys_data = []
 
             for key_data in api_keys_data:
                 api_key_obj = APIKey.from_dict(key_data)

@@ -34,6 +34,7 @@ class User:
         max_organizations: int = 1,
         user_organizations: int = 0,
         organization_id: Optional[str] = None,
+        is_federated: bool = False,
     ) -> None:
         """
         Initialize a User object
@@ -54,6 +55,7 @@ class User:
         :param max_organizations: Maximum number of organizations this user can create (default: 1)
         :param user_organizations: Current number of organizations created by this user (default: 0)
         :param organization_id: ID of the organization this user belongs to (if applicable)
+        :param is_federated: Whether the user is a federated user (e.g., created via Google sign-in)
         """
         self.username = username
         self.email = email
@@ -70,6 +72,7 @@ class User:
         self.max_organizations = max_organizations
         self.user_organizations = user_organizations
         self.organization_id = organization_id
+        self.is_federated = is_federated
 
         # Hash password if provided
         self.password_hash: Optional[str] = None
