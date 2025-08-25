@@ -628,7 +628,7 @@ class UserService:
                 return True, "Users already exist, skipping default admin creation"
 
             # Create default admin
-            success, message, _ = self.create_user(
+            create_user_result: CreateUserResult = self.create_user(
                 username="admin",
                 email="admin@arsmedicatech.com",
                 password="Admin123!",
@@ -637,10 +637,13 @@ class UserService:
                 role="admin",
             )
 
-            if success:
+            if create_user_result["success"]:
                 return True, "Default admin user created successfully"
             else:
-                return False, f"Failed to create default admin: {message}"
+                return (
+                    False,
+                    f"Failed to create default admin: {create_user_result['message']}",
+                )
 
         except Exception as e:
             return False, f"Error creating default admin: {str(e)}"

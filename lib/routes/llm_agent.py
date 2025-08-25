@@ -3,7 +3,7 @@ LLM Agent Endpoint
 """
 
 import asyncio
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 from flask import Response, jsonify, request, session
 
@@ -79,7 +79,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                 # raise NotImplementedError("LLM Agent v2 is not yet implemented")
                 agent = asyncio.run(
                     LLMAgent.from_mcp_config(
-                        mcp_config=mcp_config,
+                        mcp_config=dict(cast(Dict[str, Any], mcp_config)),
                         api_key=openai_api_key,
                         model=LLMModel.GPT_5_NANO,
                     )

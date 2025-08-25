@@ -4,7 +4,6 @@ Auth routes for handling authentication with AWS Cognito and federated identity 
 
 import base64
 import secrets
-from types import NoneType
 from typing import Any, Dict, Optional, Tuple, TypedDict, Union, cast
 from urllib import parse
 
@@ -228,10 +227,10 @@ class Claims(TypedDict):
 def get_user_data_from_claims(id_token: str) -> Claims:
     claims: Claims = jwt.decode(id_token, options={"verify_signature": False})
 
-    email = claims.get("email") or ""
-    name = claims.get("name", "") or ""
-    sub = claims.get("sub") or ""
-    cognito_username = claims.get("cognito:username") or ""
+    email = claims.get("email", "")
+    name = claims.get("name", "")
+    sub = claims.get("sub", "")
+    cognito_username = claims.get("cognito:username", "")
 
     # Generate a fallback username
     username = (
@@ -243,8 +242,8 @@ def get_user_data_from_claims(id_token: str) -> Claims:
             "email": email,
             "name": name,
             "sub": sub,
-            "cognito_username": cognito_username,
-            "username": username,
+            "cognito_username": str(cognito_username),
+            "username": str(username),
             "exp": claims.get("exp"),
         }
     )
@@ -288,7 +287,7 @@ def _handle_new_user(
         return new_user_or_error
 
 
-UserOrError = Union[User, Union[NoneType, Tuple[Response, int]], Optional[BaseResponse]]
+UserOrError = Union[User, Union[None, Tuple[Response, int]], Optional[BaseResponse]]
 
 
 def get_or_create_user(
@@ -365,7 +364,7 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
             if user_or_error is None:
                 logger.error("User creation failed with unknown error")
                 return jsonify({"error": "User creation failed"}), 500
-            elif isinstance(user_or_error, Tuple):
+            elif isinstance(user_or_error, tuple):
                 # Handle specific error responses
                 return user_or_error
 

@@ -377,17 +377,23 @@ class LLMAgent:
 
         # 2) Instantiate the LLMAgent as before
         model_str = model.value if model else LLMModel.GPT_5_NANO.value
-        system_prompt = kwargs.pop("system_prompt", DEFAULT_SYSTEM_PROMPT)
+        system_prompt_val = kwargs.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
+        system_prompt: str = (
+            system_prompt_val
+            if isinstance(system_prompt_val, str)
+            else DEFAULT_SYSTEM_PROMPT
+        )
 
         agent = cls(
             model=LLMModel(model_str),
             api_key=api_key,
             system_prompt=system_prompt,
+            custom_llm_endpoint=None,
             **kwargs,
         )
 
         # 3) Wire the manager's discovered tools into the agent
-        agent.tool_definitions = agent_manager.openai_defs
+        agent.tool_definitions = cast(List[ToolDefinition], agent_manager.openai_defs)
         agent.tool_func_dict = agent_manager.func_lookup
 
         # 4) Store the manager instance for lifecycle management (e.g., disconnecting)
