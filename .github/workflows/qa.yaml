@@ -37,7 +37,7 @@ jobs:
 
       - name: Run Python tests
         run: |
-          touch mcp_config.json
+          echo {} > mcp_config.json
           python run_tests.py all
 
       - name: Run mypy
