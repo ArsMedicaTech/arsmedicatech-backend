@@ -3,7 +3,7 @@ User Service for managing user accounts, authentication, and settings.
 """
 
 import uuid
-from typing import Any, Dict, List, TypedDict, Literal, Optional, cast
+from typing import Any, Dict, List, Literal, Optional, TypedDict, cast
 
 from amt_nano.db.surreal import DbController
 
