@@ -3,11 +3,11 @@ User Service for managing user accounts, authentication, and settings.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, cast
 
 from amt_nano.db.surreal import DbController
 
-from lib.models.user.user import User
+from lib.models.user.user import User, UserRoles
 from lib.models.user.user_session import UserSession
 from lib.models.user.user_settings import UserSettings
 from settings import logger
@@ -79,7 +79,7 @@ class UserService:
         """
         self.db.connect()
         result = self.db.query(
-            "SELECT organization_id FROM User WHERE id = $user_id", {"user_id": user_id}
+            "SELECT organization_id FROM $user_id", {"user_id": user_id}
         )
         if result and len(result) > 0:
             organization_id = result[0].get("organization_id")
@@ -94,7 +94,7 @@ class UserService:
         self,
         user_id: str,
         username: str,
-        role: str,
+        role: Literal["patient", "provider", "admin"],
         session_token: str,
         created_at: Optional[str] = None,
         expires_at: Optional[str] = None,
@@ -111,12 +111,22 @@ class UserService:
 
         :return: UserSession object
         """
+        from datetime import datetime
+
+        def parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
+            if dt_str is None:
+                return None
+            try:
+                return datetime.fromisoformat(dt_str)
+            except Exception:
+                return None
+
         user_session = UserSession(
             user_id=user_id,
             username=username,
             role=role,
-            created_at=created_at,
-            expires_at=expires_at,
+            created_at=parse_datetime(created_at),
+            expires_at=parse_datetime(expires_at),
             session_token=session_token,
         )
 
@@ -189,7 +199,7 @@ class UserService:
                 password=password,
                 first_name=first_name,
                 last_name=last_name,
-                role=role,
+                role=cast(UserRoles, role),
             )
 
             # Save to database

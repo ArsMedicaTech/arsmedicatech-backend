@@ -4,7 +4,7 @@ Auth routes for handling authentication with AWS Cognito and federated identity 
 
 import base64
 import secrets
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Tuple, Union, cast
 from urllib import parse
 
 import jwt
@@ -12,6 +12,7 @@ import requests
 from flask import Response, jsonify, redirect, request, session
 from werkzeug.wrappers.response import Response as BaseResponse
 
+from lib.models.user.user import UserRoles
 from lib.services.user_service import UserService
 from settings import (
     APP_URL,
@@ -253,7 +254,7 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
                 user_service.create_session(
                     user_id=user.id,
                     username=user.username,
-                    role=role_from_query,
+                    role=cast(UserRoles, role_from_query),
                     session_token=session_token,
                     expires_at=claims["exp"],
                 )

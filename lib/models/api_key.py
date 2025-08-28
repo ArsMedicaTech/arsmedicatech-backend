@@ -240,33 +240,27 @@ class APIKey:
     def __repr__(self) -> str:
         return f"<APIKey: {self.name} (ID: {self.id})>"
 
-    def schema(self) -> List[str]:
+    @classmethod
+    def schema(cls) -> str:
         """
-        Defines the schema for the API Key table in SurrealDB.
-        :return: list of schema definition statements.
+        Defines the schema for the api key table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
         """
-        statements: List[str] = []
-        statements.append("DEFINE TABLE api_key SCHEMAFULL;")
-        statements.append(
-            "DEFINE FIELD name ON api_key TYPE string ASSERT $value != none;"
-        )
-        statements.append(
-            "DEFINE FIELD user_id ON api_key TYPE string ASSERT $value != none;"
-        )
-        statements.append("DEFINE FIELD key_hash ON api_key TYPE string;")
-        statements.append("DEFINE FIELD permissions ON api_key TYPE array;")
-        statements.append("DEFINE FIELD rate_limit_per_hour ON api_key TYPE int;")
-        statements.append("DEFINE FIELD is_active ON api_key TYPE bool;")
-        statements.append("DEFINE FIELD expires_at ON api_key TYPE string;")
-        statements.append("DEFINE FIELD last_used_at ON api_key TYPE string;")
-        statements.append("DEFINE FIELD created_at ON api_key TYPE string;")
-
-        statements.append("DEFINE INDEX idx_api_key_user_id ON api_key FIELDS user_id;")
-        statements.append(
-            "DEFINE INDEX idx_api_key_active ON api_key FIELDS is_active;"
-        )
-
-        return statements
+        return """
+            DEFINE TABLE api_key SCHEMAFULL;
+            DEFINE FIELD name ON api_key TYPE string;
+            DEFINE FIELD user_id ON api_key TYPE record<user>;
+            DEFINE FIELD key_hash ON api_key TYPE string;
+            DEFINE FIELD permissions ON api_key TYPE array;
+            DEFINE FIELD rate_limit_per_hour ON api_key TYPE int;
+            DEFINE FIELD is_active ON api_key TYPE bool;
+            DEFINE FIELD expires_at ON api_key TYPE datetime;
+            DEFINE FIELD last_used_at ON api_key TYPE datetime;
+            DEFINE FIELD created_at ON api_key TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON api_key TYPE datetime VALUE time::now();
+            DEFINE INDEX idx_api_key_user_id ON api_key FIELDS user_id;
+            DEFINE INDEX idx_api_key_active ON api_key FIELDS is_active;
+        """
 
 
 def create_api_key_schema() -> None:
@@ -279,9 +273,6 @@ def create_api_key_schema() -> None:
     db = DbController(namespace="arsmedicatech", database="patients")
     db.connect()
 
-    api_key = APIKey("", "")
-
-    for stmt in api_key.schema():
-        db.query(stmt)
+    db.query(APIKey.schema())
 
     db.close()

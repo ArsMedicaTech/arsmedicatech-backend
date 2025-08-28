@@ -87,3 +87,18 @@ class LLMChat:
         if used_tools:
             message["usedTools"] = used_tools
         self.messages.append(message)
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the llm chat table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE llm_chat SCHEMAFULL;
+            DEFINE FIELD user_id ON llm_chat TYPE record<user>;
+            DEFINE FIELD assistant_id ON llm_chat TYPE string;
+            DEFINE FIELD messages ON llm_chat TYPE array<record<message>>;
+            DEFINE FIELD created_at ON llm_chat TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON llm_chat TYPE datetime VALUE time::now();
+        """
