@@ -73,6 +73,7 @@ class Encounter:
         observation_date: datetime,
         provider_id: str,
         note_text: Optional[SOAPNotes | str] = None,
+        soap_notes: Optional[SOAPNotes] = None,
         additional_notes: Optional[str] = None,
         diagnostic_codes: Optional[List[str]] = None,
         metadata: Optional[dict[str, Any]] = None,
@@ -82,7 +83,8 @@ class Encounter:
         :param id: Unique identifier for the encounter note.
         :param observation_date: Date when the encounter note was created.
         :param provider_id: Unique identifier for the healthcare provider.
-        :param note_text: SOAPNotes object containing the structured notes.
+        :param note_text: Original EMR notes.
+        :param soap_notes: SOAPNotes object containing the structured notes.
         :param additional_notes: Additional notes or comments for the encounter.
         :param diagnostic_codes: List of diagnostic codes associated with the encounter.
         :param metadata: Json of metadata.
@@ -103,6 +105,7 @@ class Encounter:
         self.observation_date = observation_date
         self.provider_id = provider_id
         self.metadata = metadata
+        self.soap_notes = soap_notes
         self.additional_notes = additional_notes
         self.diagnostic_codes = diagnostic_codes
         self.status = None  # e.g., locked, signed, etc.
@@ -116,7 +119,8 @@ class Encounter:
             "observation_date": self.observation_date,
             "provider_id": self.provider_id,
             "note_text": self.note_text,
-            "note_type": self.note_type,
+            "soap_notes": self.soap_notes,
+            "additional_notes": self.additional_notes,
             "diagnostic_codes": self.diagnostic_codes,
         }
 
@@ -210,6 +214,8 @@ class Encounter:
             DEFINE FIELD patient ON encounter TYPE record<patient>;
             DEFINE FIELD provider_id ON encounter TYPE record<provider>;
             DEFINE FIELD note_text ON encounter FLEXIBLE TYPE string | object;
+            DEFINE FIELD soap_notes ON encounter FLEXIBLE TYPE object;
+            DEFINE FIELD additional_notes ON encounter FLEXIBLE TYPE string | object;
             DEFINE FIELD note_type ON encounter TYPE "text" | "soap";
             DEFINE FIELD diagnostic_codes ON encounter TYPE array<string>;
             DEFINE FIELD update_date ON encounter TYPE datetime;
