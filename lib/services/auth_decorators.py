@@ -2,6 +2,7 @@
 Authentication decorators for Flask routes.
 """
 
+from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, List, Optional, TypeVar, cast
 
@@ -357,6 +358,121 @@ def require_api_permissions(
     return decorator
 
 
+def require_flexible_auth(f: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    Decorator that supports both session-based authentication and API key authentication
+
+    This decorator first tries API key authentication, and if that fails, falls back to
+    session-based authentication. This allows endpoints to work with both authentication
+    methods, which is useful for endpoints that need to support both web UI access
+    and programmatic API access.
+
+    :param f: The function to decorate (Flask route handler).
+    :return: The decorated function that checks authentication using either method.
+    """
+
+    @wraps(f)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        # First try API key authentication
+        api_key = request.headers.get("X-API-Key")
+        if api_key:
+            logger.debug("Attempting API key authentication")
+            from lib.services.api_key_service import APIKeyService
+
+            api_key_service = APIKeyService()
+            is_valid, error, api_key_obj = api_key_service.validate_api_key(api_key)
+            if is_valid and api_key_obj:
+                # Check rate limit
+                within_limit, rate_error = api_key_service.check_rate_limit(api_key_obj)
+                if not within_limit:
+                    logger.debug(f"API key rate limit exceeded: {rate_error}")
+                    return jsonify({"error": rate_error or "Rate limit exceeded"}), 429
+
+                # Add API key info to flask.g
+                g.api_key = api_key_obj
+                g.api_key_user_id = api_key_obj.user_id
+                g.api_key_permissions = api_key_obj.permissions
+                g.user_id = api_key_obj.user_id  # Set user_id for compatibility
+
+                logger.debug(
+                    f"API key authentication successful for user: {api_key_obj.user_id}"
+                )
+                return f(*args, **kwargs)
+            else:
+                logger.debug(f"API key authentication failed: {error}")
+                # Don't return error here, fall back to session auth
+
+        # Fall back to session-based authentication
+        logger.debug("Falling back to session-based authentication")
+
+        # Get token from request headers or session
+        token = request.headers.get("Authorization")
+        if token and token.startswith("Bearer "):
+            if token == "null":
+                logger.debug("Received 'null' token, treating as no token.")
+                token = None
+            else:
+                token = token[7:]
+                logger.debug(f"Got Bearer token: {token[:10]}...")
+
+        if not token:
+            token = session.get("auth_token")
+            token = str(token) if token is not None else None
+            logger.debug(f"Got session token: {token[:10] if token else 'None'}...")
+
+        # SESSION-BASED AUTH: If no token, but user_id is present in session, allow
+        if not token:
+            logger.debug("No token found. Trying session-based auth.")
+            user_id = session.get("user_id")
+            if not user_id:
+                logger.debug("No user_id found in session.")
+                return jsonify({"error": "Authentication required"}), 401
+
+            logger.debug(f"No token, but user_id found in session: {user_id}")
+            g.user_id = str(user_id)
+            user_service = UserService()
+            user_service.connect()
+            try:
+                user = user_service.get_user_by_id(str(user_id))
+                if not user:
+                    logger.debug("User not found for user_id in session.")
+                    return jsonify({"error": "User not found"}), 401
+                g.user_session = user
+                g.user_role = user.role
+                logger.debug("Session-based auth successful")
+                return f(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Error in session-based auth: {e}")
+                return jsonify({"error": "Internal server error"}), 500
+            finally:
+                user_service.close()
+
+        # TOKEN-BASED AUTH: If token is present, validate as before
+        user_service = UserService()
+        user_service.connect()
+        try:
+            logger.debug(f"Validating session token: {token[:10]}...")
+            user_session = user_service.validate_session(str(token))
+            if not user_session:
+                logger.debug("Session validation failed")
+                return jsonify({"error": "Invalid or expired session"}), 401
+
+            logger.debug(f"Session validated for user: {user_session.username}")
+            g.user_session = user_session
+            g.user_id = user_session.user_id
+            g.user_role = user_session.role
+
+            logger.debug("Token-based auth successful")
+            return f(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error in token-based auth: {e}")
+            return jsonify({"error": "Internal server error"}), 500
+        finally:
+            user_service.close()
+
+    return cast(Callable[..., Any], decorated_function)
+
+
 def get_current_user() -> Optional[UserSession]:
     """
     Get current authenticated user session
@@ -365,6 +481,20 @@ def get_current_user() -> Optional[UserSession]:
     If no user session is found, it returns None.
     :return: Optional[UserSession]: The current user session if available, otherwise None.
     """
+    # Check if we have API key authentication
+    if hasattr(g, "api_key_user_id"):
+        # For API key auth, we need to create a minimal user session object
+        # since we don't have the full user session
+        from lib.models.user.user_session import UserSession
+
+        return UserSession(
+            user_id=g.api_key_user_id,
+            username=f"api_user_{g.api_key_user_id}",  # Placeholder username
+            role="provider",  # Placeholder role
+            created_at=datetime.now(),
+        )
+
+    # Fall back to regular user session
     return getattr(g, "user_session", None)
 
 

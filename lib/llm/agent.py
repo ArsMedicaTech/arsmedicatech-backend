@@ -12,6 +12,7 @@ from typing import (
     List,
     Optional,
     Sequence,
+    TypedDict,
     Union,
     cast,
 )
@@ -19,9 +20,10 @@ from typing import (
 from amt_nano.services.encryption import get_encryption_service
 from openai import OpenAI
 from openai.types.beta.threads.runs import ToolCall
-from openai.types.chat import ChatCompletionMessageToolCall
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionMessageToolCall
 
 from lib.llm.mcp_tools import fetch_mcp_tool_defs
+from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
 from settings import logger
 
 DEFAULT_SYSTEM_PROMPT = """
@@ -29,8 +31,10 @@ You are a clinical assistant that helps healthcare providers with patient care t
 You can answer questions, provide information, and assist with various healthcare-related tasks.
 Your responses should be accurate, concise, and helpful.
 
-You have access to tools that can help you provide better information. When you need to search for specific information or perform tasks that would benefit from using these tools, please use them. Don't hesitate to use tools when they would be helpful for providing accurate and comprehensive responses.
 """
+
+# For easy debugging comment this out
+DEFAULT_SYSTEM_PROMPT += "You have access to tools that can help you provide better information. When you need to search for specific information or perform tasks that would benefit from using these tools, please use them. Don't hesitate to use tools when they would be helpful for providing accurate and comprehensive responses."  # type: ignore
 
 tools_with_keys = ["rag"]
 
@@ -39,17 +43,88 @@ from openai.types.chat import ChatCompletionToolParam
 ToolDefinition = ChatCompletionToolParam
 
 
+class LLMKwargs(TypedDict, total=False):
+    model: str
+    messages: List[ChatCompletionMessageParam]
+
+    tools: List[ToolDefinition]  # type: ignore
+    tool_choice: Optional[str]
+
+    response_format: Optional[Any]
+
+    extra_headers: Dict[str, str]
+    # Add other parameters as needed
+
+
 class LLMModel(enum.Enum):
     """
     Enumeration of supported LLM models.
     """
 
-    GPT_4_1 = "gpt-4.1"
-    GPT_4_1_MINI = "gpt-4.1-mini"
-    GPT_4_1_NANO = "gpt-4.1-nano"
+    GPT_4_1 = "gpt-4.1"  # $3.00 / 1M tokens
+    GPT_4_1_MINI = "gpt-4.1-mini"  # $0.80 / 1M tokens
+    GPT_4_1_NANO = "gpt-4.1-nano"  # $0.20 / 1M tokens
+
+    GPT_5 = "gpt-5"  # $1.25 / 1M tokens
+    GPT_5_MINI = "gpt-5-mini"  # $0.25 / 1M tokens
+    GPT_5_NANO = "gpt-5-nano"  # $0.05 / 1M tokens
 
     def __str__(self) -> str:
         return self.value
+
+
+def to_message_param(
+    msg: Dict[str, Union[str, Sequence[Collection[str]]]],
+) -> ChatCompletionMessageParam:
+    """
+    Convert message_history to ChatCompletionMessageParam format
+    :param msg: The message history to convert
+    :return: The converted message in ChatCompletionMessageParam format
+    """
+    role = msg.get("role")
+    content = msg.get("content")
+    # Handle content that might be a complex type
+    if isinstance(content, str):
+        content_str = content
+    else:
+        content_str = str(content) if content else ""
+    if role == "system":
+        return cast(
+            ChatCompletionMessageParam,
+            {"role": "system", "content": content_str},
+        )
+    elif role == "user":
+        return cast(
+            ChatCompletionMessageParam, {"role": "user", "content": content_str}
+        )
+    elif role == "assistant":
+        # Handle assistant messages with tool calls
+        if "tool_calls" in msg:
+            return cast(
+                ChatCompletionMessageParam,
+                {
+                    "role": "assistant",
+                    "content": content_str,
+                    "tool_calls": msg["tool_calls"],
+                },
+            )
+        else:
+            return cast(
+                ChatCompletionMessageParam,
+                {"role": "assistant", "content": content_str},
+            )
+    elif role == "function":
+        # Convert function role to tool role for API compatibility
+        return cast(
+            ChatCompletionMessageParam,
+            {
+                "role": "tool",
+                "content": content_str,
+                "tool_call_id": msg.get("tool_call_id", ""),
+            },
+        )
+    else:
+        raise ValueError(f"Unknown role: {role}")
 
 
 async def process_tool_call(
@@ -92,6 +167,8 @@ async def process_tool_call(
 
     result = json.dumps(tool_result)
 
+    print(f"Tool result: {result}")
+
     return {
         "role": "function",
         "name": function_name,
@@ -108,7 +185,7 @@ class LLMAgent:
     def __init__(
         self,
         custom_llm_endpoint: Optional[str] = None,
-        model: LLMModel = LLMModel.GPT_4_1_NANO,
+        model: LLMModel = LLMModel.GPT_5_NANO,
         api_key: Optional[str] = None,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         **params: Dict[
@@ -132,6 +209,8 @@ class LLMAgent:
 
         self.tool_definitions: List[ToolDefinition] = []
         self.tool_func_dict: Dict[str, Callable[..., Any]] = {}
+
+        self.agent_manager: Optional[HierarchicalAgentManager] = None
 
         self.message_history: List[Dict[str, Union[str, Sequence[Collection[str]]]]] = (
             self.fetch_history()
@@ -205,7 +284,7 @@ class LLMAgent:
         :param tool_func_dict: Dictionary mapping tool names to their callable functions.
         :return: An instance of LLMAgent with restored state.
         """
-        model_value = data.get("model", LLMModel.GPT_4_1.value)
+        model_value = data.get("model", LLMModel.GPT_5_NANO.value)
         model = LLMModel(model_value)
 
         agent = cls(
@@ -257,7 +336,7 @@ class LLMAgent:
         defs, funcs = await fetch_mcp_tool_defs(mcp_url)
 
         # 2) Instantiate the agent with explicit parameters
-        model_str = model.value if model else LLMModel.GPT_4_1_NANO.value
+        model_str = model.value if model else LLMModel.GPT_5_NANO.value
 
         system_prompt = kwargs.pop("system_prompt", DEFAULT_SYSTEM_PROMPT)
         if isinstance(system_prompt, dict):
@@ -281,12 +360,73 @@ class LLMAgent:
             logger.warning("No tools found from MCP server. Tool calls will not work.")
         return agent
 
+    @classmethod
+    async def from_mcp_config(
+        cls,
+        mcp_config: Dict[str, Any],  # Accepts the config dictionary
+        api_key: str,
+        model: Optional[LLMModel] = None,
+        **kwargs: Dict[str, Any],
+    ) -> "LLMAgent":
+        """
+        Builds an LLMAgent with a hierarchical set of tools from a multi-server MCP config.
+        """
+        # 1) Instantiate and connect the HierarchicalAgentManager
+        agent_manager = HierarchicalAgentManager(mcp_config)
+        await agent_manager.connect_and_discover()
+
+        # 2) Instantiate the LLMAgent as before
+        model_str = model.value if model else LLMModel.GPT_5_NANO.value
+        system_prompt_val = kwargs.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
+        system_prompt: str = (
+            system_prompt_val
+            if isinstance(system_prompt_val, str)
+            else DEFAULT_SYSTEM_PROMPT
+        )
+
+        agent = cls(
+            model=LLMModel(model_str),
+            api_key=api_key,
+            system_prompt=system_prompt,
+            custom_llm_endpoint=None,
+            **kwargs,
+        )
+
+        # 3) Wire the manager's discovered tools into the agent
+        agent.tool_definitions = cast(List[ToolDefinition], agent_manager.openai_defs)
+        agent.tool_func_dict = agent_manager.func_lookup
+
+        # 4) Store the manager instance for lifecycle management (e.g., disconnecting)
+        agent.agent_manager = agent_manager
+
+        logger.info(
+            f"LLMAgent initialized with {len(agent.tool_definitions)} hierarchical tools."
+        )
+        if not agent.tool_definitions:
+            logger.warning("No tools were discovered from the MCP configuration.")
+
+        return agent
+
+    async def close(self) -> None:
+        """
+        Gracefully disconnects from any managed MCP servers.
+        """
+        if self.agent_manager:
+            logger.info("Closing connections managed by HierarchicalAgentManager.")
+            await self.agent_manager.disconnect()
+        else:
+            logger.info("No active agent manager to close.")
+
     async def complete(
-        self, prompt: Optional[str], **kwargs: Dict[str, str]
+        self,
+        prompt: Optional[str],
+        response_format: Optional[Any] = None,
+        **kwargs: Dict[str, str],
     ) -> Dict[str, Any]:
         """
         Complete a prompt using the LLM, processing any tool calls if necessary.
         :param prompt: The user prompt to send to the LLM. If None, uses the existing message history.
+        :param response_format: The format for the LLM's response (e.g., text, json).
         :param kwargs: Additional parameters for the LLM completion (e.g., temperature, max_tokens).
         :return: Dict containing the LLM's response and tool usage information.
         """
@@ -304,57 +444,6 @@ class LLMAgent:
         if not api_key:
             raise ValueError("API key is required for LLM access.")
 
-        # Convert message_history to ChatCompletionMessageParam format
-        from openai.types.chat import ChatCompletionMessageParam
-
-        def to_message_param(
-            msg: Dict[str, Union[str, Sequence[Collection[str]]]],
-        ) -> ChatCompletionMessageParam:
-            role = msg.get("role")
-            content = msg.get("content")
-            # Handle content that might be a complex type
-            if isinstance(content, str):
-                content_str = content
-            else:
-                content_str = str(content) if content else ""
-            if role == "system":
-                return cast(
-                    ChatCompletionMessageParam,
-                    {"role": "system", "content": content_str},
-                )
-            elif role == "user":
-                return cast(
-                    ChatCompletionMessageParam, {"role": "user", "content": content_str}
-                )
-            elif role == "assistant":
-                # Handle assistant messages with tool calls
-                if "tool_calls" in msg:
-                    return cast(
-                        ChatCompletionMessageParam,
-                        {
-                            "role": "assistant",
-                            "content": content_str,
-                            "tool_calls": msg["tool_calls"],
-                        },
-                    )
-                else:
-                    return cast(
-                        ChatCompletionMessageParam,
-                        {"role": "assistant", "content": content_str},
-                    )
-            elif role == "function":
-                # Convert function role to tool role for API compatibility
-                return cast(
-                    ChatCompletionMessageParam,
-                    {
-                        "role": "tool",
-                        "content": content_str,
-                        "tool_call_id": msg.get("tool_call_id", ""),
-                    },
-                )
-            else:
-                raise ValueError(f"Unknown role: {role}")
-
         messages: List[ChatCompletionMessageParam] = [
             to_message_param(m) for m in self.message_history
         ]
@@ -362,14 +451,25 @@ class LLMAgent:
         logger.debug(f"Making OpenAI API call with {len(self.tool_definitions)} tools")
         logger.debug(f"Tool definitions: {self.tool_definitions}")
 
-        completion = self.client.chat.completions.create(
+        llm_kwargs = LLMKwargs(
             model=self.model.value,
             messages=messages,
-            tools=self.tool_definitions,
+            # OVERRIDE: tools=None,
+            tools=self.tool_definitions,  # type: ignore
+            response_format=response_format,
             # tool_choice="auto",
             # tool_choice='required',
             extra_headers={"x-user-pw": api_key},
         )
+
+        if not response_format:
+            llm_func: Callable[..., Any] = self.client.chat.completions.create  # type: ignore
+        else:
+            llm_func: Callable[..., Any] = self.client.beta.chat.completions.parse  # type: ignore
+
+        completion = llm_func(**llm_kwargs)
+
+        # You tried to pass a `BaseModel` class to `chat.completions.create()`; You must use `beta.chat.completions.parse()` instead
 
         top_choice = completion.choices[0].message
 

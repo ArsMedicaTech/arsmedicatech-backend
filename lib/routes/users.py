@@ -9,7 +9,7 @@ from flask import Response, jsonify, request, session
 from lib.models.user.user import User
 from lib.services.auth_decorators import get_current_user, get_current_user_id
 from lib.services.openai_security import get_openai_security_service
-from lib.services.user_service import UserService
+from lib.services.user_service import CreateUserResult, UserService
 from settings import logger
 
 
@@ -486,7 +486,7 @@ def register_route() -> Tuple[Response, int]:
     user_service.connect()
     try:
         logger.debug("Calling user_service.create_user")
-        success, message, user = user_service.create_user(
+        create_user_result: CreateUserResult = user_service.create_user(
             username=username,
             email=email,
             password=password,
@@ -495,32 +495,34 @@ def register_route() -> Tuple[Response, int]:
             role=role,
         )
 
-        logger.debug(f"User creation result - success: {success}, message: {message}")
-        if success:
-            if not user:
+        logger.debug(
+            f"User creation result - success: {create_user_result['success']}, message: {create_user_result['message']}"
+        )
+        if create_user_result["success"]:
+            if not create_user_result["user"]:
                 logger.error("User creation succeeded but returned user is None")
                 return jsonify({"error": "User creation failed"}), 500
 
-            logger.debug(f"User created successfully: {user.id}")
+            logger.debug(f"User created successfully: {create_user_result['user'].id}")
             return (
                 jsonify(
                     {
-                        "message": message,
+                        "message": create_user_result["message"],
                         "user": {
-                            "id": user.id,
-                            "username": user.username,
-                            "email": user.email,
-                            "first_name": user.first_name,
-                            "last_name": user.last_name,
-                            "role": user.role,
+                            "id": create_user_result["user"].id,
+                            "username": create_user_result["user"].username,
+                            "email": create_user_result["user"].email,
+                            "first_name": create_user_result["user"].first_name,
+                            "last_name": create_user_result["user"].last_name,
+                            "role": create_user_result["user"].role,
                         },
                     }
                 ),
                 201,
             )
         else:
-            logger.debug(f"User creation failed: {message}")
-            return jsonify({"error": message}), 400
+            logger.debug(f"User creation failed: {create_user_result['message']}")
+            return jsonify({"error": create_user_result["message"]}), 400
     finally:
         user_service.close()
 
@@ -882,10 +884,10 @@ def update_user_profile_route() -> Tuple[Response, int]:
             if not updates:
                 return jsonify({"error": "No valid fields to update"}), 400
 
-            success, message = user_service.update_user(user_id, updates)
-            logger.debug(f"Update result: success={success}, message={message}")
+            update_result = user_service.update_user(user_id, updates)
+            logger.debug(f"Update result: {update_result}")
 
-            if success:
+            if update_result["success"]:
                 return (
                     jsonify(
                         {"success": True, "message": "Profile updated successfully"}
@@ -893,7 +895,7 @@ def update_user_profile_route() -> Tuple[Response, int]:
                     200,
                 )
             else:
-                return jsonify({"error": message}), 400
+                return jsonify({"error": update_result["message"]}), 400
 
         finally:
             user_service.close()

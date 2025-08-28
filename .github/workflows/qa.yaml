@@ -36,7 +36,9 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Run Python tests
-        run: python run_tests.py all
+        run: |
+          echo {} > mcp_config.json
+          python run_tests.py all
 
       - name: Run mypy
         run: |

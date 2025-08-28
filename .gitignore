@@ -17,3 +17,9 @@ typings/
 
 config/*.apps.googleusercontent.com.json
 config.py
+
+
+mcp_config.json
+
+
+debug_api_key.txt

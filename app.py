@@ -131,6 +131,7 @@ from lib.services.auth_decorators import (
     require_api_key,
     require_api_permission,
     require_auth,
+    require_flexible_auth,
 )
 from lib.services.notifications import publish_event_with_buffer
 from lib.services.redis_client import get_redis_connection
@@ -185,7 +186,7 @@ app.config["SESSION_TYPE"] = "filesystem"
 if DEBUG:
     app.config.update(
         SESSION_COOKIE_SECURE=False,  # False only on http://localhost
-        SESSION_COOKIE_SAMESITE="Lax",  # 'Lax' if SPA and API are same origin
+        SESSION_COOKIE_SITE="None",
         SESSION_COOKIE_DOMAIN=None,  # No domain set for local development
     )
 else:
@@ -567,10 +568,11 @@ def chat_endpoint() -> Tuple[Response, int]:
 
 
 @app.route("/api/llm_chat", methods=["GET", "POST"])
-@require_auth
+@require_flexible_auth
 def llm_agent_endpoint() -> Tuple[Response, int]:
     """
     Endpoint for LLM agent interactions.
+    Supports both session-based authentication and API key authentication.
     :return: Response object with LLM agent data.
     """
     return llm_agent_endpoint_route()
@@ -1200,7 +1202,7 @@ def delete_note(note_id: str) -> Tuple[Response, int]:
     return delete_note_route(note_id)
 
 
-@app.route("/auth/login/cognito")
+@app.route("/api/auth/login/cognito")
 def login_cognito():
     role = request.args.get("role", "patient")
     intent = request.args.get("intent", "signin")
@@ -1292,7 +1294,7 @@ def test_auth_error():
     return redirect(error_url)
 
 
-@app.route("/auth/logout", methods=["GET"])
+@app.route("/api/auth/logout", methods=["GET"])
 def auth_logout() -> BaseResponse:
     """
     Logout endpoint.
