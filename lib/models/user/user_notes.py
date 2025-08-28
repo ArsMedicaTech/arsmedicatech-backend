@@ -20,8 +20,8 @@ class UserNote:
         content: str,
         note_type: UserNoteTypes = "private",
         tags: Optional[List[str]] = None,
-        date_created: Optional[str] = None,
-        date_updated: Optional[str] = None,
+        created_at: Optional[str] = None,
+        updated_at: Optional[str] = None,
         id: Optional[str] = None,
     ) -> None:
         """
@@ -32,8 +32,8 @@ class UserNote:
         :param content: Markdown content of the note
         :param note_type: Type of note ("private" or "shared")
         :param tags: List of tags for the note
-        :param date_created: Creation timestamp
-        :param date_updated: Last update timestamp
+        :param created_at: Creation timestamp
+        :param updated_at: Last update timestamp
         :param id: Database record ID
         """
         self.user_id = user_id
@@ -41,8 +41,8 @@ class UserNote:
         self.content = content
         self.note_type = note_type
         self.tags = tags or []
-        self.date_created = date_created or datetime.now(timezone.utc).isoformat()
-        self.date_updated = date_updated or datetime.now(timezone.utc).isoformat()
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.updated_at = updated_at or datetime.now(timezone.utc)
         self.id = id
 
     @staticmethod
@@ -178,8 +178,8 @@ class UserNote:
             "content": self.content,
             "note_type": self.note_type,
             "tags": self.tags,
-            "date_created": self.date_created,
-            "date_updated": self.date_updated,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
 
     @classmethod
@@ -201,7 +201,34 @@ class UserNote:
             content=str(data.get("content") or ""),
             note_type=data.get("note_type", "private"),
             tags=data.get("tags", []),
-            date_created=data.get("date_created"),
-            date_updated=data.get("date_updated"),
+            created_at=data.get("created_at"),
+            updated_at=data.get("updated_at"),
             id=note_id,
         )
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the user notes table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+        DEFINE TABLE user_note SCHEMAFULL;
+
+        DEFINE FIELD user_id ON user_note TYPE record<user>;
+        DEFINE FIELD title ON user_note TYPE string;
+        DEFINE FIELD content ON user_note TYPE string;
+        DEFINE FIELD note_type ON user_note TYPE "public" | "private";
+        DEFINE FIELD tags ON user_note TYPE array;
+        DEFINE FIELD created_at ON user_note TYPE datetime VALUE time::now() READONLY;
+        DEFINE FIELD updated_at ON user_note TYPE datetime VALUE time::now();
+        
+        DEFINE INDEX idx_user_id ON user_note FIELDS user_id;
+        DEFINE INDEX idx_note_type ON user_note FIELDS note_type;
+        DEFINE INDEX idx_date_updated ON user_note FIELDS date_updated;
+        DEFINE TABLE user_note PERMISSIONS 
+        FOR select WHERE auth.id = user_id OR note_type = 'shared'
+        FOR create WHERE auth.id = user_id
+        FOR update WHERE auth.id = user_id
+        FOR delete WHERE auth.id = user_id;
+        """

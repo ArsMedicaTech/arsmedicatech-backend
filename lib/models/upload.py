@@ -10,10 +10,9 @@ from typing import Any, Dict, List, Optional
 
 import boto3  # type: ignore
 from amt_nano.db.surreal import DbController
-from werkzeug.datastructures import FileStorage
-
 from lib.data_types import UserID
 from settings import BUCKET_NAME, S3_AWS_ACCESS_KEY_ID, S3_AWS_SECRET_ACCESS_KEY, logger
+from werkzeug.datastructures import FileStorage
 
 
 class FileType(Enum):
@@ -168,6 +167,29 @@ class Upload:
         unique_id = str(uuid.uuid4())[:8]
         extension = os.path.splitext(filename)[1]
         return f"uploads/{uploader}/{timestamp}_{unique_id}{extension}"
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the upload table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return f"""
+            DEFINE TABLE upload SCHEMAFULL;
+            DEFINE FIELD uploader ON upload TYPE record<user>;
+            DEFINE FIELD file_name ON upload TYPE string;
+            DEFINE FIELD file_path ON upload TYPE string;
+            DEFINE FIELD file_type ON upload TYPE "pdf" | "image" | "text" | "video" | "audio" | "unknown";
+            DEFINE FIELD bucket_name ON upload TYPE string DEFAULT {BUCKET_NAME};
+            DEFINE FIELD date_uploaded ON upload TYPE datetime;
+            DEFINE FIELD status ON upload TYPE "pending" | "processing" | "completed" | "failed" | "cancelled" DEFAULT {UploadStatus.PENDING.value};
+            DEFINE FIELD file_size ON upload TYPE int;
+            DEFINE FIELD s3_key ON upload TYPE string;
+            DEFINE FIELD processed_text ON upload TYPE string;
+            DEFINE FIELD task_id ON upload TYPE string;
+            DEFINE FIELD created_at ON upload TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON upload TYPE datetime VALUE time::now();
+        """
 
 
 def create_upload(upload: Upload) -> Optional[str]:

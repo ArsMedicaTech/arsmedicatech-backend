@@ -4,7 +4,7 @@ Appointment model for scheduling functionality
 
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from settings import logger
 
@@ -269,43 +269,28 @@ class Appointment:
         week_end = week_start + timedelta(days=6)
         return week_start.date() <= appointment_dt.date() <= week_end.date()
 
-    def schema(self) -> List[str]:
+    @classmethod
+    def schema(cls) -> str:
         """
-        Define database schema for appointments
-
-        :return: List of SQL statements to define the appointment table and fields
+        Defines the schema for the appointment table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
         """
-        statements: List[str] = []
-        statements.append("DEFINE TABLE appointment SCHEMAFULL;")
-        statements.append(
-            "DEFINE FIELD patient_id ON appointment TYPE record<patient>;"
-        )
-        statements.append("DEFINE FIELD provider_id ON appointment TYPE record<user>;")
-        statements.append("DEFINE FIELD appointment_date ON appointment TYPE string;")
-        statements.append("DEFINE FIELD start_time ON appointment TYPE string;")
-        statements.append("DEFINE FIELD end_time ON appointment TYPE string;")
-        statements.append("DEFINE FIELD appointment_type ON appointment TYPE string;")
-        statements.append("DEFINE FIELD status ON appointment TYPE string;")
-        statements.append("DEFINE FIELD notes ON appointment TYPE string;")
-        statements.append("DEFINE FIELD location ON appointment TYPE string;")
-        statements.append("DEFINE FIELD created_at ON appointment TYPE string;")
-        statements.append("DEFINE FIELD updated_at ON appointment TYPE string;")
-
-        # Indexes for efficient querying
-        statements.append(
-            "DEFINE INDEX idx_appointment_date ON appointment FIELDS appointment_date;"
-        )
-        statements.append(
-            "DEFINE INDEX idx_appointment_provider ON appointment FIELDS provider_id;"
-        )
-        statements.append(
-            "DEFINE INDEX idx_appointment_patient ON appointment FIELDS patient_id;"
-        )
-        statements.append(
-            "DEFINE INDEX idx_appointment_status ON appointment FIELDS status;"
-        )
-        statements.append(
-            "DEFINE INDEX idx_appointment_datetime ON appointment FIELDS appointment_date, start_time;"
-        )
-
-        return statements
+        return """
+            DEFINE TABLE appointment SCHEMAFULL;
+            DEFINE FIELD patient_id ON appointment TYPE record<patient>;
+            DEFINE FIELD provider_on ON appointment TYPE string;
+            DEFINE FIELD appointment_date ON appointment TYPE datetime;
+            DEFINE FIELD start_time ON appointment TYPE datetime;
+            DEFINE FIELD end_time ON appointment TYPE datetime;
+            DEFINE FIELD appointment_type ON appointment TYPE string;
+            DEFINE FIELD status ON appointment TYPE string;
+            DEFINE FIELD notes ON appointment TYPE string;
+            DEFINE FIELD location ON appointment TYPE string;
+            DEFINE FIELD created_at ON appointment TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON appointment TYPE datetime VALUE time::now();
+            DEFINE INDEX idx_appointment_date ON appointment FIELDS appointment_date;
+            DEFINE INDEX idx_appointment_provider ON appointment FIELDS provider_id;
+            DEFINE INDEX idx_appointment_patient ON appointment FIELDS patient_id;
+            DEFINE INDEX idx_appointment_status ON appointment FIELDS status;
+            DEFINE INDEX idx_appointment_datetime ON appointment FIELDS appointment_date, start_time;
+        """

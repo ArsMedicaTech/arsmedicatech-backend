@@ -108,6 +108,27 @@ class EducationContent:
         """
         return f"EducationContent(title='{self.title}', type='{self.content_type}', category='{self.category}')"
 
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the education content table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE education_content SCHEMAFULL;
+            DEFINE FIELD title ON education_content TYPE string;
+            DEFINE FIELD url ON education_content TYPE string ASSERT string::is::url($value);
+            DEFINE FIELD content_type ON education_content TYPE string;
+            DEFINE FIELD category ON education_content TYPE string;
+            DEFINE FIELD informationCard ON education_content TYPE object;
+            DEFINE FIELD informationCard.description ON education_content TYPE string;
+            DEFINE FIELD informationCard.features ON education_content TYPE array;
+            DEFINE FIELD informationCard.features[*].title ON education_content TYPE string;
+            DEFINE FIELD informationCard.features[*].description ON education_content TYPE string;
+            DEFINE FIELD created_at ON education_content TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON education_content TYPE datetime VALUE time::now();
+        """
+
 
 def generate_surrealql_create_query(
     content: EducationContent, table_name: str = "education"
@@ -286,32 +307,3 @@ async def delete_education_content(content_id: str) -> bool:
     query = f"DELETE FROM education {content_id};"
     result = await client.query(query)
     return len(result) > 0
-
-
-def get_education_schema() -> List[str]:
-    """
-    Returns the SurrealDB schema definition statements for the education table.
-
-    Returns:
-        List[str]: List of schema definition statements.
-    """
-    statements: List[str] = []
-    statements.append("DEFINE TABLE education SCHEMAFULL;")
-    statements.append("DEFINE FIELD title ON education TYPE string;")
-    statements.append("DEFINE FIELD url ON education TYPE string;")
-    statements.append("DEFINE FIELD type ON education TYPE string;")
-    statements.append("DEFINE FIELD category ON education TYPE string;")
-    statements.append("DEFINE FIELD informationCard ON education TYPE object;")
-    statements.append(
-        "DEFINE FIELD informationCard.description ON education TYPE string;"
-    )
-    statements.append("DEFINE FIELD informationCard.features ON education TYPE array;")
-    statements.append(
-        "DEFINE FIELD informationCard.features[*].title ON education TYPE string;"
-    )
-    statements.append(
-        "DEFINE FIELD informationCard.features[*].description ON education TYPE string;"
-    )
-    statements.append("DEFINE FIELD createdAt ON education TYPE string;")
-    statements.append("DEFINE FIELD updatedAt ON education TYPE string;")
-    return statements

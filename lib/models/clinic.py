@@ -145,6 +145,27 @@ class Clinic:
         """
         return f"Clinic(name='{self.name}', address='{self.street}, {self.city}, {self.state} {self.zip_code}, {self.country}', location=({self.longitude}, {self.latitude}))"
 
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the clinic table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE clinic SCHEMAFULL;
+            DEFINE FIELD organization_id ON clinic TYPE record<organization>;
+            DEFINE FIELD name ON clinic TYPE string;
+            DEFINE FIELD street ON clinic TYPE string;
+            DEFINE FIELD city ON clinic TYPE string;
+            DEFINE FIELD state ON clinic TYPE string;
+            DEFINE FIELD zip_code ON clinic TYPE string;
+            DEFINE FIELD country ON clinic TYPE string;
+            DEFINE FIELD longitude ON clinic TYPE float;
+            DEFINE FIELD latitude ON clinic TYPE float;
+            DEFINE FIELD created_at ON clinic TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON clinic TYPE datetime VALUE time::now();
+        """
+
 
 def generate_surrealql_create_query(clinic: Clinic, table_name: str = "clinic") -> str:
     """

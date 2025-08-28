@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from amt_nano.services.encryption import get_encryption_service
-
 from settings import logger
 
 
@@ -20,8 +19,8 @@ class UserSettings:
         user_id: str,
         openai_api_key: Optional[str] = None,
         optimal_api_key: Optional[str] = None,
-        created_at: Optional[str] = None,
-        updated_at: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = None,
         id: Optional[str] = None,
     ) -> None:
         """
@@ -37,8 +36,8 @@ class UserSettings:
         self.user_id = user_id
         self.openai_api_key = openai_api_key
         self.optimal_api_key = optimal_api_key
-        self.created_at = created_at or datetime.now(timezone.utc).isoformat()
-        self.updated_at = updated_at or datetime.now(timezone.utc).isoformat()
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.updated_at = updated_at or datetime.now(timezone.utc)
         self.id = id
 
     def set_openai_api_key(self, api_key: str) -> None:
@@ -55,7 +54,7 @@ class UserSettings:
         if not is_valid:
             raise ValueError(f"Invalid OpenAI API key: {error_message}")
         self.openai_api_key = api_key
-        self.updated_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = datetime.now(timezone.utc)
 
     def get_openai_api_key(self) -> str:
         """
@@ -101,7 +100,7 @@ class UserSettings:
         if not is_valid:
             raise ValueError(f"Invalid Optimal API key: {error_message}")
         self.optimal_api_key = api_key
-        self.updated_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = datetime.now(timezone.utc)
 
     def get_optimal_api_key(self) -> str:
         """
@@ -241,3 +240,23 @@ class UserSettings:
             return False, "Optimal API key appears to be too long"
 
         return True, ""
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the user settings table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE user_settings SCHEMAFULL;
+            DEFINE FIELD user_id ON user_settings TYPE record<user>;
+            DEFINE FIELD openai_api_key ON user_settings TYPE string;
+            DEFINE FIELD created_at ON user_settings TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON user_settings TYPE datetime VALUE time::now();
+            DEFINE INDEX idx_user_id ON user_settings FIELDS user_id;
+            DEFINE TABLE user_settings PERMISSIONS 
+            FOR select WHERE auth.id = user_id
+            FOR create WHERE auth.id = user_id
+            FOR update WHERE auth.id = user_id
+            FOR delete WHERE auth.id = user_id;
+        """
