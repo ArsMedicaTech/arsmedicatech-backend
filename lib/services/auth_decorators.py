@@ -2,6 +2,7 @@
 Authentication decorators for Flask routes.
 """
 
+from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, List, Optional, TypeVar, cast
 
@@ -490,7 +491,7 @@ def get_current_user() -> Optional[UserSession]:
             user_id=g.api_key_user_id,
             username=f"api_user_{g.api_key_user_id}",  # Placeholder username
             role="provider",  # Placeholder role
-            created_at="",  # Placeholder
+            created_at=datetime.now(),
         )
 
     # Fall back to regular user session

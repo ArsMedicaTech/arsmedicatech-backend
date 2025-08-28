@@ -13,7 +13,7 @@ from flask import Response, jsonify, redirect, request, session
 from requests import Response as RequestsResponse
 from werkzeug.wrappers.response import Response as BaseResponse
 
-from lib.models.user.user import User
+from lib.models.user.user import User, UserRoles
 from lib.services.user_service import CreateUserResult, UserService
 from settings import (
     APP_URL,
@@ -383,7 +383,7 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
         user_service.create_session(
             user_id=user.id,
             username=user.username,
-            role=role_from_query,
+            role=cast(UserRoles, role_from_query),
             session_token=id_token,
             expires_at=claims["exp"],
         )
