@@ -30,6 +30,22 @@ class Metric:
             "range": self.range,
         }
 
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the metrics table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE metrics SCHEMAFULL;
+            DEFINE FIELD metric_name ON metrics TYPE string;
+            DEFINE FIELD metric_value ON Metrics TYPE string;
+            DEFINE FIELD metric_unit ON metrics TYPE string;
+            DEFINE FIELD range ON metrics TYPE option<array<float, 2>>;
+            DEFINE FIELD created_at ON metrics TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON metrics TYPE datetime VALUE time::now();
+        """
+
 
 class MetricSet:
     def __init__(self, user_id: str, date: str, metrics: List[Metric]):
@@ -43,3 +59,15 @@ class MetricSet:
             "date": self.date,
             "metrics": [metric.to_dict() for metric in self.metrics],
         }
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the Encounter table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+
+            DEFINE FIELD created_at ON encounter TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON encounter TYPE datetime VALUE time::now();
+        """

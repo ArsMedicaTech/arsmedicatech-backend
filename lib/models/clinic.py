@@ -146,6 +146,27 @@ class Clinic:
         """
         return f"Clinic(name='{self.name}', address='{self.street}, {self.city}, {self.state} {self.zip_code}, {self.country}', location=({self.longitude}, {self.latitude}))"
 
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the clinic table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE clinic SCHEMAFULL;
+            DEFINE FIELD organization_id ON clinic TYPE record<organization>;
+            DEFINE FIELD name ON clinic TYPE string;
+            DEFINE FIELD street ON clinic TYPE string;
+            DEFINE FIELD city ON clinic TYPE string;
+            DEFINE FIELD state ON clinic TYPE string;
+            DEFINE FIELD zip_code ON clinic TYPE string;
+            DEFINE FIELD country ON clinic TYPE string;
+            DEFINE FIELD longitude ON clinic TYPE float;
+            DEFINE FIELD latitude ON clinic TYPE float;
+            DEFINE FIELD created_at ON clinic TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON clinic TYPE datetime VALUE time::now();
+        """
+
 
 def generate_surrealql_create_query(clinic: Clinic, table_name: str = "clinic") -> str:
     """
@@ -196,7 +217,7 @@ if __name__ == "__main__":
     logger.debug("DEFINE FIELD address.state ON clinic TYPE string;")
     logger.debug("DEFINE FIELD address.zip ON clinic TYPE string;")
     logger.debug("DEFINE FIELD address.country ON clinic TYPE string;")
-    logger.debug("DEFINE FIELD location ON clinic TYPE geometry (point);")
+    logger.debug("DEFINE FIELD location ON clinic TYPE point;")
     logger.debug("-" * 30)
 
     # Create instances of the Clinic class for some sample clinics.
@@ -292,7 +313,7 @@ async def get_clinic_by_id(clinic_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         dict: The clinic record if found, otherwise None.
     """
-    query = f"SELECT * FROM clinic WHERE id = '{clinic_id}';"
+    query = f"SELECT * FROM {clinic_id};"
     result = await client.query(query)
     return result[0] if result else None
 
@@ -370,7 +391,7 @@ async def delete_clinic(clinic_id: str) -> bool:
     Returns:
         bool: True if the deletion was successful, False otherwise.
     """
-    query = f"DELETE FROM clinic WHERE id = '{clinic_id}';"
+    query = f"DELETE FROM clinic {clinic_id};"
     result = await client.query(query)
     return len(result) > 0
 

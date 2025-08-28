@@ -2,12 +2,12 @@
 User Notes Service for managing user notes.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from amt_nano.db.surreal import DbController
 from surrealdb import RecordID  # type: ignore
 
-from lib.models.user.user_notes import UserNote
+from lib.models.user.user_notes import UserNote, UserNoteTypes
 from settings import logger
 
 
@@ -105,7 +105,7 @@ class UserNotesService:
                 user_id=user_id,
                 title=title,
                 content=content,
-                note_type=note_type,
+                note_type=cast(UserNoteTypes, note_type),
                 tags=tags or [],
             )
 

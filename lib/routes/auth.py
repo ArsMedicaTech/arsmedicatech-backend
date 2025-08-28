@@ -5,6 +5,7 @@ Auth routes for handling authentication with AWS Cognito and federated identity 
 import base64
 import secrets
 from typing import Any, Dict, Optional, Tuple, TypedDict, Union, cast
+
 from urllib import parse
 
 import jwt
@@ -15,6 +16,8 @@ from werkzeug.wrappers.response import Response as BaseResponse
 
 from lib.models.user.user import User
 from lib.services.user_service import CreateUserResult, UserService
+from lib.models.user.user import UserRoles
+
 from settings import (
     APP_URL,
     CLIENT_ID,
@@ -205,6 +208,7 @@ def get_user_response(
             user_response.status_code,
             user_response.text,
         )
+
         return (
             jsonify(
                 {"status": user_response.status_code, "message": user_response.text}

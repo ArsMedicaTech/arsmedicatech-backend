@@ -3,7 +3,9 @@ This module defines the Conversation and Message classes for managing conversati
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
+
+ConversationType = Literal["user_to_user", "ai_assistant"]
 
 
 class Conversation:
@@ -14,7 +16,7 @@ class Conversation:
     def __init__(
         self,
         participants: List[str],
-        conversation_type: str = "user_to_user",
+        conversation_type: ConversationType = "user_to_user",
         created_at: Optional[str] = None,
         id: Optional[str] = None,
         last_message_at: Optional[str] = None,
@@ -101,6 +103,21 @@ class Conversation:
             return True
         return False
 
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the conversation table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE conversation SCHEMAFULL;
+            DEFINE FIELD participants ON conversation TYPE array<record<user>>;
+            DEFINE FIELD conversation_type ON conversation TYPE "user_to_user" | "ai_assistant";
+            DEFINE FIELD last_message_at ON conversation TYPE datetime VALUE time::now();
+            DEFINE FIELD created_at ON conversation TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON conversation TYPE datetime VALUE time::now();
+        """
+
 
 class Message:
     """
@@ -168,3 +185,19 @@ class Message:
             id=msg_id,
             is_read=data.get("is_read", False),
         )
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the message table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE message SCHEMAFULL;
+            DEFINE FIELD conversation_id ON message TYPE record<conversation>;
+            DEFINE FIELD sender_id ON message TYPE record<user>;
+            DEFINE FIELD text ON message TYPE string;
+            DEFINE FIELD is_read ON message TYPE bool;
+            DEFINE FIELD created_at ON message TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON message TYPE datetime VALUE time::now();
+        """

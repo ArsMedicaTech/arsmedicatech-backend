@@ -35,7 +35,7 @@ def add_some_placeholder_encounters(
 
         encounter = Encounter(
             str(note_id),
-            date_created.isoformat(),
+            date_created,
             provider_id,
             additional_notes=note_text,
             diagnostic_codes=diagnostic_codes,

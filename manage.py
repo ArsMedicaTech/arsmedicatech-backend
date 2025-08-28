@@ -1,3 +1,7 @@
+"""
+This file is for our migrations using each model class and their static method `model.schema()`.
+"""
+
 #!/usr/bin/env python3
 # In: manage.py (in your project root)
 
@@ -50,3 +54,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

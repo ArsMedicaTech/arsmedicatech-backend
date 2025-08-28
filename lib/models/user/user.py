@@ -6,9 +6,11 @@ import hashlib
 import re
 import secrets
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from settings import logger
+
+UserRoles = Literal["patient", "provider", "admin"]
 
 
 class User:
@@ -23,9 +25,10 @@ class User:
         password: Optional[str] = None,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
-        role: str = "patient",
+        role: UserRoles = "patient",
         is_active: bool = True,
-        created_at: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = None,
         id: Optional[str] = None,
         specialty: Optional[str] = None,
         clinic_name: Optional[str] = None,
@@ -47,6 +50,7 @@ class User:
         :param role: User role (patient, provider, admin)
         :param is_active: Whether the user account is active
         :param created_at: Creation timestamp
+        :param updated_at: Creation timestamp
         :param id: Database record ID
         :param specialty: Medical specialty (for providers)
         :param clinic_name: Name of the clinic (for providers)
@@ -57,14 +61,15 @@ class User:
         :param organization_id: ID of the organization this user belongs to (if applicable)
         :param is_federated: Whether the user is a federated user (e.g., created via Google sign-in)
         """
+        self.id = id
         self.username = username
         self.email = email
         self.first_name = first_name or ""
         self.last_name = last_name or ""
         self.role = role
         self.is_active = is_active
-        self.created_at = created_at or datetime.now(timezone.utc).isoformat()
-        self.id = id
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.updated_at = updated_at or datetime.now(timezone.utc)
         self.specialty = specialty or ""
         self.clinic_name = clinic_name or ""
         self.clinic_address = clinic_address or ""
@@ -80,6 +85,31 @@ class User:
             self.password_hash = self.hash_password(password)
         else:
             self.password_hash = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert user to dictionary for database storage
+
+        :return: Dictionary representation of the user
+        """
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "role": self.role,
+            "is_active": self.is_active,
+            "created_at": self.created_at,
+            "password_hash": self.password_hash,
+            "specialty": self.specialty,
+            "clinic_name": self.clinic_name,
+            "clinic_address": self.clinic_address,
+            "phone": self.phone,
+            "max_organizations": self.max_organizations,
+            "user_organizations": self.user_organizations,
+            "organization_id": self.organization_id,
+        }
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -122,30 +152,6 @@ class User:
         except (ValueError, AttributeError) as e:
             logger.debug(f"Password verification error: {e}")
             return False
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert user to dictionary for database storage
-
-        :return: Dictionary representation of the user
-        """
-        return {
-            "username": self.username,
-            "email": self.email,
-            "first_name": self.first_name,
-            "last_name": self.last_name,
-            "role": self.role,
-            "is_active": self.is_active,
-            "created_at": self.created_at,
-            "password_hash": self.password_hash,
-            "specialty": self.specialty,
-            "clinic_name": self.clinic_name,
-            "clinic_address": self.clinic_address,
-            "phone": self.phone,
-            "max_organizations": self.max_organizations,
-            "user_organizations": self.user_organizations,
-            "organization_id": self.organization_id,
-        }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "User":
@@ -348,3 +354,27 @@ class User:
                 f"User has reached their organization limit of {self.max_organizations}"
             )
         self.user_organizations += 1
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the User table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE user SCHEMAFULL;
+            DEFINE FIELD username ON user TYPE string;
+            DEFINE FIELD email ON user TYPE string ASSERT string::is::email($);
+            DEFINE FIELD first_name ON user TYPE string;
+            DEFINE FIELD last_name ON user TYPE string;
+            DEFINE FIELD role ON user TYPE "patient" | "provider" | "admin;
+            DEFINE FIELD specialty ON user TYPE string;
+            DEFINE FIELD clinic_name ON user TYPE string;
+            DEFINE FIELD clinic_address ON user TYPE string;
+            DEFINE FIELD phone ON user TYPE string;
+            DEFINE FIELD max_organizations ON user TYPE int DEFAULT 1;
+            DEFINE FIELD user_organizations ON user TYPE int DEFAULT 0;
+            DEFINE FIELD organization_id ON user TYPE record<organization>;
+            DEFINE FIELD created_at ON user TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON user TYPE datetime VALUE time::now();
+        """

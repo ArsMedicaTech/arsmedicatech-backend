@@ -74,8 +74,8 @@ def get_user_notes_route() -> Tuple[Response, int]:
                                 "content": note.content,
                                 "note_type": note.note_type,
                                 "tags": note.tags,
-                                "date_created": note.date_created,
-                                "date_updated": note.date_updated,
+                                "created_at": note.created_at,
+                                "updated_at": note.updated_at,
                             }
                             for note in notes
                         ],
@@ -142,8 +142,8 @@ def get_note_by_id_route(note_id: str) -> Tuple[Response, int]:
                             "content": note.content,
                             "note_type": note.note_type,
                             "tags": note.tags,
-                            "date_created": note.date_created,
-                            "date_updated": note.date_updated,
+                            "created_at": note.created_at,
+                            "updated_at": note.updated_at,
                         },
                     }
                 ),
@@ -232,8 +232,8 @@ def create_note_route() -> Tuple[Response, int]:
                                 "content": note.content,
                                 "note_type": note.note_type,
                                 "tags": note.tags,
-                                "date_created": note.date_created,
-                                "date_updated": note.date_updated,
+                                "created_at": note.created_at,
+                                "updated_at": note.updated_at,
                             },
                         }
                     ),
@@ -318,8 +318,8 @@ def update_note_route(note_id: str) -> Tuple[Response, int]:
                                 "content": note.content,
                                 "note_type": note.note_type,
                                 "tags": note.tags,
-                                "date_created": note.date_created,
-                                "date_updated": note.date_updated,
+                                "created_at": note.created_at,
+                                "updated_at": note.updated_at,
                             },
                         }
                     ),

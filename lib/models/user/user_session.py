@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from dateutil.parser import isoparse  # type: ignore[import-untyped]
+from lib.models.user.user import UserRoles
 
 
 class UserSession:
@@ -18,9 +18,9 @@ class UserSession:
         self,
         user_id: str,
         username: str,
-        role: str,
-        created_at: Optional[str] = None,
-        expires_at: Optional[str] = None,
+        role: UserRoles,
+        created_at: Optional[datetime] = None,
+        expires_at: Optional[datetime] = None,
         session_token: Optional[str] = None,
     ) -> None:
         """
@@ -28,8 +28,8 @@ class UserSession:
         :param user_id: Unique user ID
         :param username: User's username
         :param role: User's role (patient, provider, admin)
-        :param created_at: Creation timestamp (ISO format)
-        :param expires_at: Expiration timestamp (ISO format, defaults to 24 hours from now)
+        :param created_at: Creation timestamp
+        :param expires_at: Expiration timestamp (defaults to 24 hours from now)
         :param session_token: Optional pre-generated token [for federated sign in], if None a new one will be generated
         :raises ValueError: If user_id or username is empty
         :raises ValueError: If role is not one of the valid roles
@@ -48,36 +48,24 @@ class UserSession:
         self.username = username
         self.role = role
 
-        if created_at:
+        if created_at is None:
             try:
-                datetime.fromisoformat(created_at)
+                created_at = datetime.now(timezone.utc)
             except ValueError:
                 raise ValueError("created_at must be in ISO format")
 
         if expires_at:
             try:
-                if not isinstance(expires_at, str):
-                    # expires_at <class 'int'> 1753196293
-                    # 2025-07-22 13:58:14,043 - logger - ERROR - Failed to create/update user in database: expires_at must be in ISO format (logger.py:122)
-                    if isinstance(expires_at, int):
-                        expires_at = datetime.fromtimestamp(
-                            expires_at, tz=timezone.utc
-                        ).isoformat()
-                    else:
-                        raise ValueError("expires_at must be a string in ISO format")
-                expires = isoparse(expires_at)
-                if expires < datetime.fromisoformat(
-                    created_at or datetime.now(timezone.utc).isoformat()
-                ):
+                if expires_at < created_at:
                     raise ValueError("expires_at must be after created_at")
             except ValueError:
                 raise ValueError("expires_at must be in ISO format")
         else:
-            expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
-        self.created_at = created_at or datetime.now(timezone.utc).isoformat()
-        self.expires_at = (
-            expires_at or (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.expires_at = expires_at or (
+            datetime.now(timezone.utc) + timedelta(hours=24)
         )
 
         if session_token:
@@ -95,7 +83,7 @@ class UserSession:
         :return: True if session is expired, False otherwise
         """
         try:
-            expires = datetime.fromisoformat(self.expires_at)
+            expires = self.expires_at
             return datetime.now(timezone.utc) > expires
         except (ValueError, TypeError):
             return True
@@ -124,9 +112,9 @@ class UserSession:
         :return: UserSession object
         """
         session = cls(
-            user_id=str(data.get("user_id", "")),
-            username=str(data.get("username", "")),
-            role=str(data.get("role", "patient")),
+            user_id=data.get("user_id", ""),
+            username=data.get("username", ""),
+            role=data.get("role", "patient"),
             created_at=data.get("created_at"),
             expires_at=data.get("expires_at"),
         )
@@ -134,3 +122,19 @@ class UserSession:
         if "session_token" in data:
             session.session_token = data["session_token"]
         return session
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the user session table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE user_session SCHEMAFULL;
+            DEFINE FIELD user_id ON user_session TYPE record<user>;
+            DEFINE FIELD username ON user_session TYPE string;
+            DEFINE FIELD role ON user_session TYPE "patient" | "provider" | "admin";
+            DEFINE FIELD expires_at ON user_session TYPE datetime;
+            DEFINE FIELD created_at ON user_session TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON user_session TYPE datetime VALUE time::now();
+        """
