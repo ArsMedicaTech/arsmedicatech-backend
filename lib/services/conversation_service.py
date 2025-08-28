@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from amt_nano.db.surreal import DbController
 
-from lib.models.conversation import Conversation, Message
+from lib.models.conversation import Conversation, ConversationType, Message
 from settings import logger
 
 
@@ -69,7 +69,9 @@ class ConversationService:
                 return True, "Conversation already exists", existing_conv
 
             # Create new conversation
-            conversation = Conversation(participants, conversation_type)
+            conversation = Conversation(
+                participants, cast(ConversationType, conversation_type)
+            )
             logger.debug(
                 f"Creating conversation in DB with data: {conversation.to_dict()}"
             )

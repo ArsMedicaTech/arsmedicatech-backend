@@ -29,7 +29,7 @@ def store_encounter(
     :param patient_id: Patient ID in the format 'patient:<demographic_no>'.
     :return: Result of the store operation.
     """
-    record_id = f"encounter:{encounter.note_id}"
+    record_id = f"encounter:{encounter.id}"
 
     # Handle note_text properly - store SOAP notes as objects, not strings
     note_text: Union[str, Dict[str, Any]] = ""
@@ -42,8 +42,8 @@ def store_encounter(
         note_text = encounter.additional_notes or ""
 
     content_data: Dict[str, Any] = {
-        "note_id": str(encounter.note_id),
-        "date_created": str(encounter.date_created),
+        "note_id": str(encounter.id),
+        "observation_date": str(encounter.observation_date),
         "provider_id": str(encounter.provider_id),
         "note_text": note_text,
         "note_type": note_type,
@@ -52,7 +52,7 @@ def store_encounter(
 
     query = f"CREATE {record_id}\n"
     set_query = f"""SET  note_id = $note_id,
-                        date_created = $date_created,
+                        observation_date = $observation_date,
                         provider_id = $provider_id,
                         note_text = $note_text,
                         note_type = $note_type,
@@ -421,21 +421,37 @@ def create_encounter(encounter_data: Dict[str, Any], patient_id: str) -> Encount
             k in note_text for k in ["subjective", "objective", "assessment", "plan"]
         ):
             # This is SOAP notes
+            note_text_dict: Dict[str, Any] = note_text  # type: ignore
             soap_notes = SOAPNotes(
-                subjective=str(note_text.get("subjective", "")),
-                objective=str(note_text.get("objective", "")),
-                assessment=str(note_text.get("assessment", "")),
-                plan=str(note_text.get("plan", "")),
+                subjective=str(note_text_dict.get("subjective", "")),
+                objective=str(note_text_dict.get("objective", "")),
+                assessment=str(note_text_dict.get("assessment", "")),
+                plan=str(note_text_dict.get("plan", "")),
             )
         else:
             # This is plain text
-            additional_notes = str(note_text or "")
+            additional_notes = note_text if isinstance(note_text, str) else ""
+
+        # Ensure observation_date is a datetime object
+        from datetime import datetime
+
+        obs_date = encounter_data.get("observation_date")
+        if isinstance(obs_date, str):
+            try:
+                observation_date = datetime.fromisoformat(obs_date)
+            except Exception:
+                observation_date = datetime.now()
+        elif isinstance(obs_date, datetime):
+            observation_date = obs_date
+        else:
+            observation_date = datetime.now()
 
         # Create Encounter object
         encounter = Encounter(
-            note_id=encounter_data["note_id"],
-            date_created=str(encounter_data.get("date_created") or ""),
+            id=encounter_data["id"],
+            observation_date=observation_date,
             provider_id=str(encounter_data.get("provider_id") or ""),
+            note_text=str(encounter_data.get("note_text") or ""),
             soap_notes=soap_notes,
             additional_notes=additional_notes,
             diagnostic_codes=encounter_data.get("diagnostic_codes", []),

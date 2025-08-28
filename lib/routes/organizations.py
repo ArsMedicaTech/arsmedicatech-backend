@@ -111,7 +111,7 @@ def create_organization_route() -> Tuple[Response, int]:
         org = Organization(
             name=name,
             org_type=org_type,
-            created_by=created_by,
+            created_by_id=created_by,
             description=description,
             country=country,
             clinic_ids=clinic_ids,

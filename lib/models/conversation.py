@@ -5,6 +5,8 @@ This module defines the Conversation and Message classes for managing conversati
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
+ConversationType = Literal["user_to_user", "ai_assistant"]
+
 
 class Conversation:
     """
@@ -14,7 +16,7 @@ class Conversation:
     def __init__(
         self,
         participants: List[str],
-        conversation_type: Literal["user_to_user", "ai_assistant"] = "user_to_user",
+        conversation_type: ConversationType = "user_to_user",
         created_at: Optional[str] = None,
         id: Optional[str] = None,
         last_message_at: Optional[str] = None,

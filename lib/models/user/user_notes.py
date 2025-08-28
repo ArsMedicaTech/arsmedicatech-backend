@@ -3,7 +3,7 @@ User Notes model.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 UserNoteTypes = Literal["public", "private"]
 
@@ -46,7 +46,7 @@ class UserNote:
         self.id = id
 
     @staticmethod
-    def validate_note_type(note_type: UserNoteTypes) -> tuple[bool, str]:
+    def validate_note_type(note_type: str) -> Tuple[bool, str]:
         """
         Validate note type
 

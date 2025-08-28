@@ -98,7 +98,8 @@ class Encounter:
             self.note_text = note_text.serialize()  # Store as object, not string
             self.note_type = "soap"
         else:
-            self.note_text = self.additional_notes or ""
+            # TODO: error: Incompatible types in assignment (expression has type "str", variable has type "dict[str, Any]")  [assignment]
+            self.note_text = additional_notes or ""  # type: ignore
             self.note_type = "text"
 
         self.id = id
