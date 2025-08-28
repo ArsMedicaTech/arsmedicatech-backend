@@ -316,7 +316,6 @@ def get_or_create_user(
 
 
 def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
-    print("WHAT THE FUCK", request.args)
     # 1. Handle initial errors from Cognito
     error = request.args.get("error")
     logger.debug("[DEBUG] 1) Error:", error)
