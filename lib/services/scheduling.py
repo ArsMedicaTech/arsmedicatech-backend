@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from amt_nano.db.surreal import DbController
+
 from lib.events import (
     AppointmentCancelled,
     AppointmentCompleted,

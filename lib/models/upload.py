@@ -10,9 +10,10 @@ from typing import Any, Dict, List, Optional
 
 import boto3  # type: ignore
 from amt_nano.db.surreal import DbController
+from werkzeug.datastructures import FileStorage
+
 from lib.data_types import UserID
 from settings import BUCKET_NAME, S3_AWS_ACCESS_KEY_ID, S3_AWS_SECRET_ACCESS_KEY, logger
-from werkzeug.datastructures import FileStorage
 
 
 class FileType(Enum):

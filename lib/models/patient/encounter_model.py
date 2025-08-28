@@ -7,10 +7,11 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
+from surrealdb import RecordID  # type: ignore[import-untyped]
+
 from lib.models.patient.common import EncounterDict
 from lib.models.patient.patient_model import Patient
 from settings import logger
-from surrealdb import RecordID  # type: ignore[import-untyped]
 
 
 class SOAPNotes:

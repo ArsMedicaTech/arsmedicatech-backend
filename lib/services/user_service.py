@@ -6,6 +6,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from amt_nano.db.surreal import DbController
+
 from lib.models.user.user import User
 from lib.models.user.user_session import UserSession
 from lib.models.user.user_settings import UserSettings

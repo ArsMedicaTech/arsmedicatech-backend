@@ -6,6 +6,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from amt_nano.db.surreal import AsyncDbController
+
 from lib.data_types import EducationContentType
 from settings import logger
 
