@@ -97,11 +97,11 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
 
             # Use the persistent chat history as context
             history: list[Dict[str, Any]] = chat.messages
-            print(f"History: {history}")  # Debugging line to check history content
-            # You may want to format this for your LLM
+            logger.debug(f"History: {history}")
+
             response = asyncio.run(
                 agent.complete(prompt, response_format=response_format)
-            )  # Remove history parameter as it's not supported
+            )
             logger.debug("response", type(response), response)
 
             # Log API usage (only if using stored key, not if provided in request)
