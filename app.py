@@ -1238,7 +1238,7 @@ def login_cognito():
     return redirect(cognito_url)
 
 
-@app.route("/auth/callback", methods=["GET", "POST"])
+@app.route("/api/auth/callback", methods=["GET", "POST"])
 def cognito_callback() -> Union[Tuple[Response, int], BaseResponse]:
     """
     Cognito login endpoint.

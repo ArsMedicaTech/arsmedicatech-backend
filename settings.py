@@ -110,9 +110,9 @@ CLIENT_SECRET = os.environ.get("USER_POOL_CLIENT_SECRET", "your-app-client-secre
 
 
 REDIRECT_URI = (
-    f"http://localhost:{PORT}/auth/callback"
+    f"http://localhost:{PORT}/api/auth/callback"
     if DEBUG
-    else "https://demo.arsmedicatech.com/auth/callback"
+    else "https://demo.arsmedicatech.com/api/auth/callback"
 )
 COGNITO_LOGIN_URL = f"https://{COGNITO_DOMAIN}/oauth2/authorize?client_id={CLIENT_ID}&response_type=code&scope=openid+email+profile&redirect_uri={REDIRECT_URI}&identity_provider=Google"
 
