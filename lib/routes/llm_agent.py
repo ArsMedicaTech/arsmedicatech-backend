@@ -3,12 +3,13 @@ LLM Agent Endpoint
 """
 
 import asyncio
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
-from flask import Response, jsonify, request, session
+from flask import Response, jsonify, request
 
 from lib.data_types import UserID
-from lib.llm.agent import LLMAgent, LLMModel
+from lib.llm.agent import DEFAULT_SYSTEM_PROMPT, LLMAgent, LLMModel, ToolDefinition
+from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
 from lib.services.auth_decorators import get_current_user
 from lib.services.llm_chat_service import LLMChatService
 from lib.services.openai_security import get_openai_security_service
@@ -115,13 +116,34 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                 UserID(current_user_id), assistant_id, "Me", prompt
             )
 
+            response_format = data.get("response_format")  # type: ignore
+
+            # Use the persistent chat history as context
+            history: list[Dict[str, Any]] = chat.messages
+            logger.debug(f"History: {history}")
+
+            agent_mcp_config = (
+                dict(cast(Dict[str, Any], mcp_config))
+                if AGENT_VERSION == "v2"
+                else {"url": MCP_URL}  # Adapt based on your config structure
+            )
+
             if AGENT_VERSION:
                 # raise NotImplementedError("LLM Agent v2 is not yet implemented")
-                agent = asyncio.run(
-                    LLMAgent.from_mcp_config(
-                        mcp_config=dict(cast(Dict[str, Any], mcp_config)),
+                # agent = asyncio.run(
+                #     LLMAgent.from_mcp_config(
+                #         mcp_config=dict(cast(Dict[str, Any], mcp_config)),
+                #         api_key=openai_api_key,
+                #         model=LLMModel.GPT_5_NANO,
+                #     )
+                # )
+                response = asyncio.run(
+                    _get_agent_response(
+                        mcp_conf=agent_mcp_config,
                         api_key=openai_api_key,
-                        model=LLMModel.GPT_5_NANO,
+                        prompt=prompt,
+                        history=history,
+                        response_format=response_format,
                     )
                 )
             else:
@@ -133,15 +155,10 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                     )
                 )
 
-            response_format = data.get("response_format")  # type: ignore
+                response = asyncio.run(
+                    agent.complete(prompt, response_format=response_format)
+                )
 
-            # Use the persistent chat history as context
-            history: list[Dict[str, Any]] = chat.messages
-            logger.debug(f"History: {history}")
-
-            response = asyncio.run(
-                agent.complete(prompt, response_format=response_format)
-            )
             logger.debug("response", type(response), response)
 
             # Log API usage (only if using stored key, not if provided in request)
@@ -162,8 +179,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             )
 
             # Save updated agent state to session (only for session-based auth)
-            if hasattr(request, "session"):
-                session["agent_data"] = agent.to_dict()
+            # if hasattr(request, "session"): session["agent_data"] = agent.to_dict()
 
             # Return chat data with tool usage information
             chat_data = chat.to_dict()

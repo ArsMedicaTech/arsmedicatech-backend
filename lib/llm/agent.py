@@ -156,11 +156,7 @@ async def process_tool_call(
     tool_function = tool_dict[function_name]
     # Check if this is an MCP tool by checking if it's a wrapped function from fetch_mcp_tool_defs
     # MCP tools are wrapped and always require session_id parameter
-    if (
-        function_name in tools_with_keys
-        or hasattr(tool_function, "__name__")
-        and tool_function.__name__ == "_call"
-    ):
+    if function_name in tools_with_keys:
         tool_result = await tool_function(session_id=session_id, **arguments)
     else:
         tool_result = await tool_function(**arguments)
