@@ -108,6 +108,12 @@ USER_POOL_ID = os.environ.get("USER_POOL_ID", "your-user-pool-id")
 CLIENT_ID = os.environ.get("USER_POOL_CLIENT_ID", "your-app-client-id")
 CLIENT_SECRET = os.environ.get("USER_POOL_CLIENT_SECRET", "your-app-client-secret")
 
+# LoginRadius OIDC Configuration
+LOGINRADIUS_SITE_URL = os.environ.get("LOGINRADIUS_SITE_URL", "https://your-site-url.hub.loginradius.com")
+LOGINRADIUS_OIDC_APP_NAME = os.environ.get("LOGINRADIUS_OIDC_APP_NAME", "your-oidc-app-name")
+LOGINRADIUS_CLIENT_ID = os.environ.get("LOGINRADIUS_CLIENT_ID", "your-client-id")
+LOGINRADIUS_CLIENT_SECRET = os.environ.get("LOGINRADIUS_CLIENT_SECRET", "your-client-secret")
+
 
 REDIRECT_URI = (
     f"http://localhost:{PORT}/api/auth/callback"
