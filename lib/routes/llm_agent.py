@@ -15,6 +15,46 @@ from lib.services.openai_security import get_openai_security_service
 from settings import AGENT_VERSION, MCP_URL, logger, mcp_config
 
 
+async def _get_agent_response(
+    mcp_conf: Dict[str, Any],
+    api_key: str,
+    prompt: str,
+    history: List[Dict[str, Any]],
+    response_format: Any,
+    **kwargs: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Handles the entire async workflow for getting a response from the LLM agent.
+    """
+    manager = HierarchicalAgentManager(mcp_conf)
+
+    async with manager:
+        system_prompt_val = kwargs.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
+        system_prompt: str = (
+            system_prompt_val
+            if isinstance(system_prompt_val, str)
+            else DEFAULT_SYSTEM_PROMPT
+        )
+
+        agent = LLMAgent(
+            mcp_config=dict(cast(Dict[str, Any], mcp_config)),
+            api_key=api_key,
+            model=LLMModel.GPT_5_NANO,
+            system_prompt=system_prompt,
+        )
+
+        # 3) Wire the manager's discovered tools into the agent
+        agent.tool_definitions = cast(List[ToolDefinition], manager.openai_defs)
+        agent.tool_func_dict = manager.func_lookup
+
+        # 3. Get the completion from the agent
+        response = await agent.complete(
+            prompt,
+            response_format=response_format,
+        )
+        return response
+
+
 def llm_agent_endpoint_route() -> Tuple[Response, int]:
     """
     Route for the LLM agent endpoint.
