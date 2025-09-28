@@ -373,7 +373,6 @@ class LLMAgent:
         """
         # 1) Instantiate and connect the HierarchicalAgentManager
         agent_manager = HierarchicalAgentManager(mcp_config)
-        await agent_manager.connect_and_discover()
 
         # 2) Instantiate the LLMAgent as before
         model_str = model.value if model else LLMModel.GPT_5_NANO.value

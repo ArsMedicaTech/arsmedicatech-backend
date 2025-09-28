@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from types import TracebackType
 from typing import Any, Callable, Dict, List
 
 from fastmcp import Client
@@ -24,14 +25,16 @@ class HierarchicalAgentManager:
         self.resources: List[Any] = []  # You can store resource info here
         self.prompts: List[Any] = []  # You can store prompt info here
 
-    async def connect_and_discover(self) -> None:
+    async def __aenter__(self):
         """
         Connects to all configured MCP servers and builds the tool/resource lists.
+
+        Establishes the connection, discovers all capabilities, and prepares the manager for use.
         """
         logger.info("Connecting to MCP servers and discovering capabilities...")
-        try:
-            await self.client.__aenter__()  # Manually enter the context
+        await self.client.__aenter__()  # Enter the client's context
 
+        try:
             # Fetch everything from all agents in parallel
             all_tools, self.resources, self.prompts = await asyncio.gather(
                 self.client.list_tools(),
@@ -45,7 +48,6 @@ class HierarchicalAgentManager:
 
             # Process the discovered tools
             for tool in all_tools:
-                # The tool.name is now automatically prefixed, e.g., "code_analyst_review_code"
                 self.openai_defs.append(
                     {
                         "type": "function",
@@ -63,8 +65,21 @@ class HierarchicalAgentManager:
                 self.func_lookup[tool.name] = self._create_tool_caller(tool.name)
 
         except Exception as e:
+            # Ensure we disconnect if setup fails
             logger.error(f"Failed to connect or discover agents: {e}")
-        # The connection will be kept open until we call disconnect
+            await self.client.__aexit__(type(e), e, e.__traceback__)
+            raise  # Re-raise the exception to the caller
+
+        return self  # Return the instance for use in the 'as' clause
+
+    async def __aexit__(
+        self, exc_type: type, exc_val: Exception, exc_tb: TracebackType
+    ):
+        """
+        Ensures the client connection is closed when exiting the context.
+        """
+        logger.info("Disconnecting from MCP servers.")
+        await self.client.__aexit__(exc_type, exc_val, exc_tb)
 
     def _create_tool_caller(self, tool_name: str) -> Callable[..., Any]:
         """Creates a wrapper to call a specific tool using the persistent client."""
@@ -83,8 +98,3 @@ class HierarchicalAgentManager:
                 return {"error": str(e)}
 
         return _call
-
-    async def disconnect(self) -> None:
-        """Closes the connection to all servers."""
-        logger.info("Disconnecting from MCP servers.")
-        await self.client.__aexit__(None, None, None)
