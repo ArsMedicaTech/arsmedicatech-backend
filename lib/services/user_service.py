@@ -169,6 +169,9 @@ class UserService:
         last_name: Optional[str] = None,
         role: str = "patient",
         is_federated: bool = False,
+        auth_provider: str = "local",
+        external_id: Optional[str] = None,
+        external_data: Optional[Dict[str, Any]] = None,
     ) -> CreateUserResult:
         """
         Create a new user account
@@ -180,6 +183,9 @@ class UserService:
         :param last_name: Last name of the user (optional)
         :param role: Role of the user (default is "patient")
         :param is_federated: Whether the user is created via federated login (default is False)
+        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param external_id: External user ID from OAuth provider
+        :param external_data: Additional data from OAuth provider
 
         :return: (success, message, user_object)
         """
@@ -220,6 +226,10 @@ class UserService:
                 first_name=first_name,
                 last_name=last_name,
                 role=cast(UserRoles, role),
+                is_federated=is_federated,
+                auth_provider=auth_provider,
+                external_id=external_id,
+                external_data=external_data,
             )
 
             # Save to database
@@ -397,6 +407,29 @@ class UserService:
 
         except Exception as e:
             logger.error(f"Error getting user by email: {e}")
+            return None
+
+    def get_user_by_external_id(self, external_id: str, auth_provider: str) -> Optional[User]:
+        """
+        Get user by external ID and auth provider
+
+        :param external_id: External user ID from OAuth provider
+        :param auth_provider: Authentication provider (cognito, loginradius, etc.)
+        :return: User object if found, None otherwise
+        """
+        try:
+            result = self.db.query(
+                "SELECT * FROM User WHERE external_id = $external_id AND auth_provider = $auth_provider",
+                {"external_id": external_id, "auth_provider": auth_provider}
+            )
+
+            if result and len(result) > 0:
+                user_dict = result[0]
+                return User.from_dict(user_dict)
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting user by external ID: {e}")
             return None
 
     def get_user_by_id(self, user_id: str) -> Optional[User]:
