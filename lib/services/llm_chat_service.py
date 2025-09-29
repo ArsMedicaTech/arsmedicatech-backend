@@ -116,5 +116,35 @@ class LLMChatService:
         if not chat_id:
             raise ValueError("Chat ID is not set")
 
-        self.db.update(f"LLMChat:{chat_id.split(':', 1)[1]}", chat.to_dict())
+        try:
+            # Ensure database connection is established
+            if not hasattr(self.db, "_connection") or self.db._connection is None:
+                self.db.connect()
+
+            # Debug: Log what we're trying to update
+            chat_data = chat.to_dict()
+            # Fix: Use lowercase table name to match the actual record format
+            record_id = f"llm_chat:{chat_id.split(':', 1)[1]}"
+            logger.debug(
+                f"Attempting to update record {record_id} with data: {chat_data}"
+            )
+
+            # Use the original db.update() method but with proper error handling
+            result = self.db.update(record_id, chat_data)
+            logger.debug(f"Database update result: {result} (type: {type(result)})")
+
+            if not result:
+                logger.warning(
+                    f"Failed to update LLM chat {chat_id}, but continuing with in-memory chat"
+                )
+            else:
+                logger.debug(f"Successfully updated LLM chat {chat_id}")
+
+        except Exception as e:
+            logger.error(f"Error updating LLM chat {chat_id}: {e}")
+            # Continue with in-memory chat even if database update fails
+            logger.warning(
+                "Continuing with in-memory chat despite database update failure"
+            )
+
         return chat
