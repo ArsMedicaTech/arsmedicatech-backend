@@ -48,6 +48,28 @@ async def _get_agent_response(
         agent.tool_definitions = cast(List[ToolDefinition], manager.openai_defs)
         agent.tool_func_dict = manager.func_lookup
 
+        # 4) Set the conversation history from the database
+        # Convert LLMChat message format to LLMAgent format
+        converted_history = []
+        for msg in history:
+            if isinstance(msg, dict):
+                # Convert sender to role and text to content
+                role = msg.get("sender")
+                content = msg.get("text", "")
+
+                # Map sender values to expected role values
+                if role == "Me":
+                    role = "user"
+                elif role == "AI Assistant":
+                    role = "assistant"
+                elif role is None:
+                    # Skip messages with None sender
+                    continue
+
+                converted_history.append({"role": role, "content": content})
+
+        agent.message_history = converted_history
+
         # 3. Get the completion from the agent
         response = await agent.complete(
             prompt,
