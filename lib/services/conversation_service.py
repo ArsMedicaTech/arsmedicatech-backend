@@ -252,10 +252,19 @@ class ConversationService:
                 logger.debug(f"Conversation data before update: {conv_data}")
                 if conv_data:
                     conv_data["last_message_at"] = message.created_at
-                    update_result = self.db.update(
-                        f"Conversation:{conversation_id}", conv_data
-                    )
-                    logger.debug(f"Conversation update result: {update_result}")
+                    try:
+                        update_result = self.db.update(
+                            f"Conversation:{conversation_id}", conv_data
+                        )
+                        logger.debug(f"Conversation update result: {update_result}")
+                        if not update_result:
+                            logger.warning(
+                                f"Failed to update conversation {conversation_id} last_message_at"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"Error updating conversation {conversation_id}: {e}"
+                        )
                 else:
                     logger.debug(
                         "Could not fetch conversation for safe update, skipping merge update."
