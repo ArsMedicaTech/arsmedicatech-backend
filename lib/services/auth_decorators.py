@@ -67,7 +67,15 @@ def require_auth(f: Callable[..., Any]) -> Callable[..., Any]:
                 if not user:
                     logger.debug("User not found for user_id in session.")
                     return jsonify({"error": "User not found"}), 401
-                g.user_session = user
+                # Create a UserSession object for compatibility
+                from lib.models.user.user_session import UserSession
+
+                user_session = UserSession(
+                    user_id=user.id,
+                    username=user.username,
+                    role=user.role,
+                )
+                g.user_session = user_session
                 g.user_role = user.role
                 logger.debug("Returning early from session-based auth")
                 return f(*args, **kwargs)
@@ -437,7 +445,15 @@ def require_flexible_auth(f: Callable[..., Any]) -> Callable[..., Any]:
                 if not user:
                     logger.debug("User not found for user_id in session.")
                     return jsonify({"error": "User not found"}), 401
-                g.user_session = user
+                # Create a UserSession object for compatibility
+                from lib.models.user.user_session import UserSession
+
+                user_session = UserSession(
+                    user_id=user.id,
+                    username=user.username,
+                    role=user.role,
+                )
+                g.user_session = user_session
                 g.user_role = user.role
                 logger.debug("Session-based auth successful")
                 return f(*args, **kwargs)

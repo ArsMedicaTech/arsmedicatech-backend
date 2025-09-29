@@ -195,9 +195,12 @@ class UserService:
             if not valid:
                 return CreateUserResult(success=False, message=msg, user=None)
 
-            valid, msg = User.validate_email(email)
-            if not valid:
-                return CreateUserResult(success=False, message=msg, user=None)
+            # For OAuth users, we might have generated a fallback email
+            # Skip email validation for OAuth users with generated emails
+            if not (is_federated and email.endswith("@loginradius.local")):
+                valid, msg = User.validate_email(email)
+                if not valid:
+                    return CreateUserResult(success=False, message=msg, user=None)
 
             if not is_federated:
                 valid, msg = User.validate_password(password)

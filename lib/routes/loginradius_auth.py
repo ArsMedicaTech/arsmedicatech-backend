@@ -71,7 +71,7 @@ def verify_loginradius_token_route() -> Tuple[Response, int]:
     try:
         # Verify LoginRadius ID token
         is_valid, user_info, error = loginradius_service.get_user_info_from_token(
-            id_token
+            id_token, access_token
         )
         if not is_valid:
             logger.error(f"LoginRadius token verification failed: {error}")
