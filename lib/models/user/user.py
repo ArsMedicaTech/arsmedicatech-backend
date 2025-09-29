@@ -102,8 +102,7 @@ class User:
 
         :return: Dictionary representation of the user
         """
-        return {
-            "id": self.id,
+        data = {
             "username": self.username,
             "email": self.email,
             "first_name": self.first_name,
@@ -124,6 +123,12 @@ class User:
             "external_id": self.external_id,
             "external_data": self.external_data,
         }
+
+        # Only include id if it's not None (let SurrealDB generate it for new records)
+        if self.id is not None:
+            data["id"] = self.id
+
+        return data
 
     @staticmethod
     def hash_password(password: str) -> str:
