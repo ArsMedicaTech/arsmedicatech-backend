@@ -98,7 +98,7 @@ class LLMChat:
             DEFINE TABLE llm_chat SCHEMAFULL;
             DEFINE FIELD user_id ON llm_chat TYPE record<user>;
             DEFINE FIELD assistant_id ON llm_chat TYPE string;
-            DEFINE FIELD messages ON llm_chat TYPE array<record<message>>;
+            DEFINE FIELD messages ON llm_chat TYPE array<object>;
             DEFINE FIELD created_at ON llm_chat TYPE datetime VALUE time::now() READONLY;
             DEFINE FIELD updated_at ON llm_chat TYPE datetime VALUE time::now();
         """
