@@ -34,7 +34,7 @@ def get_user_metric_sets(user_id: str) -> List[Dict[str, Any]]:
     :return: List of metric set dicts
     """
     results = db.query(
-        "SELECT * FROM MetricSet WHERE user_id = $user_id", {"user_id": user_id}
+        "SELECT * FROM metrics WHERE user_id = $user_id", {"user_id": user_id}
     )
 
     # Convert RecordID to string
@@ -53,7 +53,7 @@ def get_user_metric_set_by_date(user_id: str, date: str) -> Dict[str, Any]:
     :return: Metric set dict or empty dict
     """
     results = db.query(
-        "SELECT * FROM MetricSet WHERE user_id = $user_id AND date = $date",
+        "SELECT * FROM metrics WHERE user_id = $user_id AND date = $date",
         {"user_id": user_id, "date": date},
     )
     if results and "result" in results[0]:

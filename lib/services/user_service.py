@@ -235,7 +235,7 @@ class UserService:
             # Save to database
             logger.debug(f"Creating user with data: {user.to_dict()}")
 
-            result = cast(CreateSurrealDbResult, self.db.create("User", user.to_dict()))  # type: ignore
+            result = cast(CreateSurrealDbResult, self.db.create("user", user.to_dict()))  # type: ignore
             logger.debug(f"Database create result: {result}")
             # logger.debug(f"Database create result type: {type(result)}")
 
@@ -347,7 +347,7 @@ class UserService:
 
             # Store session in database
             try:
-                self.db.create("Session", session.to_dict())
+                self.db.create("user_session", session.to_dict())
                 logger.debug(
                     f"Session stored in database: {session.session_token[:10]}..."
                 )
@@ -374,7 +374,7 @@ class UserService:
             logger.debug(f"get_user_by_username - username: {username}")
 
             result = self.db.query(
-                "SELECT * FROM User WHERE username = $username", {"username": username}
+                "SELECT * FROM user WHERE username = $username", {"username": username}
             )
 
             if result and len(result) > 0:
@@ -396,7 +396,7 @@ class UserService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM User WHERE email = $email", {"email": email}
+                "SELECT * FROM user WHERE email = $email", {"email": email}
             )
 
             if result and len(result) > 0:
@@ -409,7 +409,9 @@ class UserService:
             logger.error(f"Error getting user by email: {e}")
             return None
 
-    def get_user_by_external_id(self, external_id: str, auth_provider: str) -> Optional[User]:
+    def get_user_by_external_id(
+        self, external_id: str, auth_provider: str
+    ) -> Optional[User]:
         """
         Get user by external ID and auth provider
 
@@ -419,8 +421,8 @@ class UserService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM User WHERE external_id = $external_id AND auth_provider = $auth_provider",
-                {"external_id": external_id, "auth_provider": auth_provider}
+                "SELECT * FROM user WHERE external_id = $external_id AND auth_provider = $auth_provider",
+                {"external_id": external_id, "auth_provider": auth_provider},
             )
 
             if result and len(result) > 0:
@@ -700,7 +702,7 @@ class UserService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM UserSettings WHERE user_id = $user_id",
+                "SELECT * FROM user_settings WHERE user_id = $user_id",
                 {"user_id": user_id},
             )
 
@@ -757,7 +759,7 @@ class UserService:
             else:
                 # Create new settings
                 logger.debug("Creating new settings")
-                result = self.db.create("UserSettings", settings.to_dict())
+                result = self.db.create("user_settings", settings.to_dict())
                 logger.debug(f"Create result: {result}")
                 if result and result.get("id"):
                     settings.id = result["id"]

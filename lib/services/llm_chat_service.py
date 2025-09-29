@@ -50,7 +50,7 @@ class LLMChatService:
         :return: List[LLMChat] - A list of LLMChat objects for the specified user.
         """
         result = self.db.query(
-            "SELECT * FROM LLMChat WHERE user_id = $user_id", {"user_id": user_id}
+            "SELECT * FROM llm_chat WHERE user_id = $user_id", {"user_id": user_id}
         )
         chats = []
         if result and isinstance(result, list):
@@ -68,7 +68,7 @@ class LLMChatService:
         :return: Optional[LLMChat] - The LLMChat object if found, otherwise None.
         """
         result = self.db.query(
-            "SELECT * FROM LLMChat WHERE user_id = $user_id AND assistant_id = $assistant_id",
+            "SELECT * FROM llm_chat WHERE user_id = $user_id AND assistant_id = $assistant_id",
             {"user_id": user_id, "assistant_id": assistant_id},
         )
         if result and isinstance(result, list) and len(result) > 0:
@@ -84,7 +84,7 @@ class LLMChatService:
         :return: LLMChat - The newly created LLMChat object.
         """
         chat = LLMChat(user_id=user_id, assistant_id=assistant_id)
-        result = self.db.create("LLMChat", chat.to_dict())
+        result = self.db.create("llm_chat", chat.to_dict())
         if result and isinstance(result, dict):
             chat.id = result.get("id")
         return chat

@@ -112,7 +112,7 @@ class UserNotesService:
             # Save to database
             logger.debug(f"Creating note with data: {note.to_dict()}")
 
-            result = self.db.create("UserNote", note.to_dict())
+            result = self.db.create("user_note", note.to_dict())
             logger.debug(f"Database create result: {result}")
 
             if result:
@@ -148,7 +148,7 @@ class UserNotesService:
                 query_user_id = f"User:{user_id}"
 
             result = self.db.query(
-                "SELECT * FROM UserNote WHERE id = $note_id AND (user_id = $user_id OR note_type = 'shared')",
+                "SELECT * FROM user_note WHERE id = $note_id AND (user_id = $user_id OR note_type = 'shared')",
                 {"note_id": RecordID("UserNote", note_id), "user_id": query_user_id},
             )
 
@@ -179,12 +179,12 @@ class UserNotesService:
 
             if include_shared:
                 result = self.db.query(
-                    "SELECT * FROM UserNote WHERE user_id = $user_id OR note_type = 'shared' ORDER BY date_updated DESC",
+                    "SELECT * FROM user_note WHERE user_id = $user_id OR note_type = 'shared' ORDER BY date_updated DESC",
                     {"user_id": user_id},
                 )
             else:
                 result = self.db.query(
-                    "SELECT * FROM UserNote WHERE user_id = $user_id ORDER BY date_updated DESC",
+                    "SELECT * FROM user_note WHERE user_id = $user_id ORDER BY date_updated DESC",
                     {"user_id": user_id},
                 )
 
@@ -270,7 +270,7 @@ class UserNotesService:
 
             # Use SQL UPDATE query instead of db.update() method
             set_clause = ", ".join([f"{k} = ${k}" for k in updates.keys()])
-            query = f"UPDATE UserNote SET {set_clause} WHERE id = $note_id RETURN *"
+            query = f"UPDATE user_note SET {set_clause} WHERE id = $note_id RETURN *"
 
             # Extract the actual ID part from note_id
             actual_id = note_id
@@ -350,7 +350,7 @@ class UserNotesService:
             if include_shared:
                 result = self.db.query(
                     """
-                    SELECT * FROM UserNote 
+                    SELECT * FROM user_note 
                     WHERE (user_id = $user_id OR note_type = 'shared')
                     AND (title CONTAINS $query OR content CONTAINS $query OR array::any(tags) CONTAINS $query)
                     ORDER BY date_updated DESC
@@ -360,7 +360,7 @@ class UserNotesService:
             else:
                 result = self.db.query(
                     """
-                    SELECT * FROM UserNote 
+                    SELECT * FROM user_note 
                     WHERE user_id = $user_id
                     AND (title CONTAINS $query OR content CONTAINS $query OR array::any(tags) CONTAINS $query)
                     ORDER BY date_updated DESC

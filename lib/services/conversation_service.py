@@ -78,7 +78,7 @@ class ConversationService:
             logger.debug(f"Created conversation object: {conversation.to_dict()}")
 
             # Save to database
-            result = self.db.create("Conversation", conversation.to_dict())
+            result = self.db.create("conversation", conversation.to_dict())
             logger.debug(f"Database create result: {result}")
             if result:
                 conversation.id = result.get("id")
@@ -100,13 +100,13 @@ class ConversationService:
 
                     # Let's check what's actually in the database
                     logger.debug("Checking all conversations in database...")
-                    all_conversations = self.db.query("SELECT * FROM Conversation")
+                    all_conversations = self.db.query("SELECT * FROM conversation")
                     logger.debug(f"All conversations: {all_conversations}")
 
                     # Also try to get conversations by participants
                     logger.debug("Checking conversations by participants...")
                     participant_conversations = self.db.query(
-                        "SELECT * FROM Conversation WHERE $user_id IN participants",
+                        "SELECT * FROM conversation WHERE $user_id IN participants",
                         {"user_id": participants[0]},
                     )
                     logger.debug(
@@ -173,7 +173,7 @@ class ConversationService:
 
             # Query for conversations with these exact participants
             result = self.db.query(
-                "SELECT * FROM Conversation WHERE participants = $participants",
+                "SELECT * FROM conversation WHERE participants = $participants",
                 {"participants": sorted_participants},
             )
 
@@ -194,7 +194,7 @@ class ConversationService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM Conversation WHERE $user_id IN participants",
+                "SELECT * FROM conversation WHERE $user_id IN participants",
                 {"user_id": user_id},
             )
 
@@ -234,7 +234,7 @@ class ConversationService:
 
             # Save message to database
             result: Optional[Union[Dict[str, Any], List[Any], Tuple[Any, ...]]] = (
-                self.db.create("Message", message.to_dict())
+                self.db.create("message", message.to_dict())
             )
             logger.debug(f"Message create result: {result}")
             if result:
@@ -280,7 +280,7 @@ class ConversationService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM Message WHERE conversation_id = $conversation_id ORDER BY created_at DESC LIMIT $limit",
+                "SELECT * FROM message WHERE conversation_id = $conversation_id ORDER BY created_at DESC LIMIT $limit",
                 {"conversation_id": conversation_id, "limit": limit},
             )
 
@@ -307,7 +307,7 @@ class ConversationService:
         """
         try:
             result: Optional[List[Dict[str, Any]]] = self.db.query(
-                "UPDATE Message SET is_read = true WHERE conversation_id = $conversation_id AND sender_id != $user_id",
+                "UPDATE message SET is_read = true WHERE conversation_id = $conversation_id AND sender_id != $user_id",
                 {"conversation_id": conversation_id, "user_id": user_id},
             )
             logger.debug(f"Mark messages as read result: {result}")
@@ -337,7 +337,7 @@ class ConversationService:
 
             # Delete all messages first
             self.db.query(
-                "DELETE FROM Message WHERE conversation_id = $conversation_id",
+                "DELETE FROM message WHERE conversation_id = $conversation_id",
                 {"conversation_id": conversation_id},
             )
 
