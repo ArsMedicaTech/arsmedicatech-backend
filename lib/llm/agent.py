@@ -35,6 +35,8 @@ Your responses should be accurate, concise, and helpful.
 
 # For easy debugging comment this out
 DEFAULT_SYSTEM_PROMPT += "You have access to tools that can help you provide better information. When you need to search for specific information or perform tasks that would benefit from using these tools, please use them. Don't hesitate to use tools when they would be helpful for providing accurate and comprehensive responses."  # type: ignore
+DEFAULT_SYSTEM_PROMPT += "\n\n"  # type: ignore
+DEFAULT_SYSTEM_PROMPT += "In fact, if there is a tool that matches a user request, you must use it. Do not make up information that can be retrieved by using a tool. Always prefer using a tool when available, even when the result may seem simple or obvious, because part of the philosophy of this software system is explainability and providing a chain of evidence for decisions.\n\n"  # type: ignore
 
 tools_with_keys = ["rag"]
 
