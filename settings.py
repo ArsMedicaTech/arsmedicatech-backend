@@ -155,4 +155,7 @@ mcp_config = None
 if AGENT_VERSION == "v2":
     import json
 
-    mcp_config = json.loads(open("mcp_config.json").read())
+    try:
+        mcp_config = json.loads(open("mcp_config.json").read())
+    except FileNotFoundError:
+        mcp_config = json.loads(open("mcp_config_default.json").read())
