@@ -169,7 +169,7 @@ class UserService:
         last_name: Optional[str] = None,
         role: str = "patient",
         is_federated: bool = False,
-        auth_provider: str = "local",
+        auth_provider: Literal["local", "cognito", "loginradius"] = "local",
         external_id: Optional[str] = None,
         external_data: Optional[Dict[str, Any]] = None,
     ) -> CreateUserResult:

@@ -77,9 +77,20 @@ def verify_loginradius_token_route() -> Tuple[Response, int]:
             logger.error(f"LoginRadius token verification failed: {error}")
             return jsonify({"error": f"Token verification failed: {error}"}), 401
 
+        # Validate user_info and extract external_id
+        if not user_info or not isinstance(user_info, dict):
+            logger.error("LoginRadius returned no user info or unexpected format")
+            return jsonify({"error": "No user information in token"}), 401
+
+        # Prefer "sub" but fallback to other common fields, then ensure it's a string
+        external_id = user_info.get("sub") or user_info.get("id") or None
+        if not external_id:
+            logger.error("External ID (sub) missing in LoginRadius user info")
+            return jsonify({"error": "External user ID is missing"}), 401
+
         # Check if user exists by external_id
         existing_user = user_service.get_user_by_external_id(
-            external_id=user_info["sub"], auth_provider="loginradius"
+            external_id=str(external_id), auth_provider="loginradius"
         )
 
         if existing_user:
@@ -106,7 +117,7 @@ def verify_loginradius_token_route() -> Tuple[Response, int]:
             create_result = user_service.create_user(
                 username=new_user.username,
                 email=new_user.email,
-                password=None,  # No password for OAuth users
+                password="",  # No password for OAuth users; use empty string to satisfy create_user signature
                 first_name=new_user.first_name,
                 last_name=new_user.last_name,
                 role=new_user.role,

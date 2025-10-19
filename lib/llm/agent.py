@@ -3,6 +3,7 @@ LLM Agent Module
 """
 
 import enum
+import inspect
 import json
 from typing import (
     Any,
@@ -410,7 +411,21 @@ class LLMAgent:
         """
         if self.agent_manager:
             logger.info("Closing connections managed by HierarchicalAgentManager.")
-            await self.agent_manager.disconnect()
+            mgr = cast(Any, self.agent_manager)
+            # Prefer explicit 'disconnect' if available, fallback to 'close'.
+            # Cast to Any so static checkers won't complain about dynamic attributes.
+            if hasattr(mgr, "disconnect"):
+                res = getattr(mgr, "disconnect")()
+                if inspect.isawaitable(res):
+                    await res
+            elif hasattr(mgr, "close"):
+                res = getattr(mgr, "close")()
+                if inspect.isawaitable(res):
+                    await res
+            else:
+                logger.debug(
+                    "Agent manager does not expose 'disconnect' or 'close' methods."
+                )
         else:
             logger.info("No active agent manager to close.")
 

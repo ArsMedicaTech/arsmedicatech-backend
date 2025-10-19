@@ -183,6 +183,10 @@ class LoginRadiusService:
             return False, None, error
 
         try:
+            # Ensure payload is present
+            if payload is None:
+                return False, None, "Token payload is empty"
+
             # Extract user information from token payload
             sub = payload.get("sub")
             if not sub:
