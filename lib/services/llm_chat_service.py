@@ -50,7 +50,7 @@ class LLMChatService:
         :return: List[LLMChat] - A list of LLMChat objects for the specified user.
         """
         result = self.db.query(
-            "SELECT * FROM LLMChat WHERE user_id = $user_id", {"user_id": user_id}
+            "SELECT * FROM llm_chat WHERE user_id = $user_id", {"user_id": user_id}
         )
         chats = []
         if result and isinstance(result, list):
@@ -68,7 +68,7 @@ class LLMChatService:
         :return: Optional[LLMChat] - The LLMChat object if found, otherwise None.
         """
         result = self.db.query(
-            "SELECT * FROM LLMChat WHERE user_id = $user_id AND assistant_id = $assistant_id",
+            "SELECT * FROM llm_chat WHERE user_id = $user_id AND assistant_id = $assistant_id",
             {"user_id": user_id, "assistant_id": assistant_id},
         )
         if result and isinstance(result, list) and len(result) > 0:
@@ -84,7 +84,7 @@ class LLMChatService:
         :return: LLMChat - The newly created LLMChat object.
         """
         chat = LLMChat(user_id=user_id, assistant_id=assistant_id)
-        result = self.db.create("LLMChat", chat.to_dict())
+        result = self.db.create("llm_chat", chat.to_dict())
         if result and isinstance(result, dict):
             chat.id = result.get("id")
         return chat
@@ -116,5 +116,35 @@ class LLMChatService:
         if not chat_id:
             raise ValueError("Chat ID is not set")
 
-        self.db.update(f"LLMChat:{chat_id.split(':', 1)[1]}", chat.to_dict())
+        try:
+            # Ensure database connection is established
+            if not hasattr(self.db, "_connection") or self.db._connection is None:
+                self.db.connect()
+
+            # Debug: Log what we're trying to update
+            chat_data = chat.to_dict()
+            # Fix: Use lowercase table name to match the actual record format
+            record_id = f"llm_chat:{chat_id.split(':', 1)[1]}"
+            logger.debug(
+                f"Attempting to update record {record_id} with data: {chat_data}"
+            )
+
+            # Use the original db.update() method but with proper error handling
+            result = self.db.update(record_id, chat_data)
+            logger.debug(f"Database update result: {result} (type: {type(result)})")
+
+            if not result:
+                logger.warning(
+                    f"Failed to update LLM chat {chat_id}, but continuing with in-memory chat"
+                )
+            else:
+                logger.debug(f"Successfully updated LLM chat {chat_id}")
+
+        except Exception as e:
+            logger.error(f"Error updating LLM chat {chat_id}: {e}")
+            # Continue with in-memory chat even if database update fails
+            logger.warning(
+                "Continuing with in-memory chat despite database update failure"
+            )
+
         return chat

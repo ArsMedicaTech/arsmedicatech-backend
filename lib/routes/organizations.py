@@ -126,7 +126,16 @@ def create_organization_route() -> Tuple[Response, int]:
             # Increment user's organization count
             user.increment_organization_count()
             user_update_data = user.to_dict()
-            db.update(f"user:{created_by}", user_update_data)
+            try:
+                result = db.update(f"user:{created_by}", user_update_data)
+                if not result:
+                    logger.warning(
+                        f"Failed to update user {created_by} organization count"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error updating user {created_by} organization count: {e}"
+                )
 
             return jsonify({"organization": org.to_dict(), "id": org_id}), 201
         else:
@@ -165,7 +174,12 @@ def update_organization_route(org_id: str) -> Tuple[Response, int]:
                 setattr(org, key, data[key])
         # Save updated org
         update_data = org.to_dict()
-        db.update(f"organization:{org_id}", update_data)
+        try:
+            result = db.update(f"organization:{org_id}", update_data)
+            if not result:
+                logger.warning(f"Failed to update organization {org_id}")
+        except Exception as e:
+            logger.error(f"Error updating organization {org_id}: {e}")
         return jsonify({"organization": org.to_dict()}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -253,7 +267,12 @@ def add_clinic_to_organization_route(org_id: str) -> Tuple[Response, int]:
 
             # Save updated org
             update_data = org.to_dict()
-            db.update(f"organization:{org_id}", update_data)
+            try:
+                result = db.update(f"organization:{org_id}", update_data)
+                if not result:
+                    logger.warning(f"Failed to update organization {org_id}")
+            except Exception as e:
+                logger.error(f"Error updating organization {org_id}: {e}")
 
         return jsonify({"organization": org.to_dict()}), 200
     except Exception as e:
@@ -296,7 +315,12 @@ def remove_clinic_from_organization_route(org_id: str) -> Tuple[Response, int]:
 
             # Save updated org
             update_data = org.to_dict()
-            db.update(f"organization:{org_id}", update_data)
+            try:
+                result = db.update(f"organization:{org_id}", update_data)
+                if not result:
+                    logger.warning(f"Failed to update organization {org_id}")
+            except Exception as e:
+                logger.error(f"Error updating organization {org_id}: {e}")
 
         return jsonify({"organization": org.to_dict()}), 200
     except Exception as e:

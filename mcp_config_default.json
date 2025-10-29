@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "evidence_based_tooling": {
+        "url": "http://localhost:9000/mcp"
+    },
+    "fhir": {
+        "url": "http://localhost:9001/mcp"
+    }
+  }
+}

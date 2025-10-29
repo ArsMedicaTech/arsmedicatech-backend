@@ -3,6 +3,7 @@ LLM Agent Module
 """
 
 import enum
+import inspect
 import json
 from typing import (
     Any,
@@ -35,6 +36,8 @@ Your responses should be accurate, concise, and helpful.
 
 # For easy debugging comment this out
 DEFAULT_SYSTEM_PROMPT += "You have access to tools that can help you provide better information. When you need to search for specific information or perform tasks that would benefit from using these tools, please use them. Don't hesitate to use tools when they would be helpful for providing accurate and comprehensive responses."  # type: ignore
+DEFAULT_SYSTEM_PROMPT += "\n\n"  # type: ignore
+DEFAULT_SYSTEM_PROMPT += "In fact, if there is a tool that matches a user request, you must use it. Do not make up information that can be retrieved by using a tool. Always prefer using a tool when available, even when the result may seem simple or obvious, because part of the philosophy of this software system is explainability and providing a chain of evidence for decisions.\n\n"  # type: ignore
 
 tools_with_keys = ["rag"]
 
@@ -156,11 +159,7 @@ async def process_tool_call(
     tool_function = tool_dict[function_name]
     # Check if this is an MCP tool by checking if it's a wrapped function from fetch_mcp_tool_defs
     # MCP tools are wrapped and always require session_id parameter
-    if (
-        function_name in tools_with_keys
-        or hasattr(tool_function, "__name__")
-        and tool_function.__name__ == "_call"
-    ):
+    if function_name in tools_with_keys:
         tool_result = await tool_function(session_id=session_id, **arguments)
     else:
         tool_result = await tool_function(**arguments)
@@ -373,7 +372,6 @@ class LLMAgent:
         """
         # 1) Instantiate and connect the HierarchicalAgentManager
         agent_manager = HierarchicalAgentManager(mcp_config)
-        await agent_manager.connect_and_discover()
 
         # 2) Instantiate the LLMAgent as before
         model_str = model.value if model else LLMModel.GPT_5_NANO.value
@@ -413,7 +411,21 @@ class LLMAgent:
         """
         if self.agent_manager:
             logger.info("Closing connections managed by HierarchicalAgentManager.")
-            await self.agent_manager.disconnect()
+            mgr = cast(Any, self.agent_manager)
+            # Prefer explicit 'disconnect' if available, fallback to 'close'.
+            # Cast to Any so static checkers won't complain about dynamic attributes.
+            if hasattr(mgr, "disconnect"):
+                res = getattr(mgr, "disconnect")()
+                if inspect.isawaitable(res):
+                    await res
+            elif hasattr(mgr, "close"):
+                res = getattr(mgr, "close")()
+                if inspect.isawaitable(res):
+                    await res
+            else:
+                logger.debug(
+                    "Agent manager does not expose 'disconnect' or 'close' methods."
+                )
         else:
             logger.info("No active agent manager to close.")
 

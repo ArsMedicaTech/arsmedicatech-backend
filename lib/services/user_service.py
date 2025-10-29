@@ -169,6 +169,9 @@ class UserService:
         last_name: Optional[str] = None,
         role: str = "patient",
         is_federated: bool = False,
+        auth_provider: Literal["local", "cognito", "loginradius"] = "local",
+        external_id: Optional[str] = None,
+        external_data: Optional[Dict[str, Any]] = None,
     ) -> CreateUserResult:
         """
         Create a new user account
@@ -180,6 +183,9 @@ class UserService:
         :param last_name: Last name of the user (optional)
         :param role: Role of the user (default is "patient")
         :param is_federated: Whether the user is created via federated login (default is False)
+        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param external_id: External user ID from OAuth provider
+        :param external_data: Additional data from OAuth provider
 
         :return: (success, message, user_object)
         """
@@ -189,9 +195,12 @@ class UserService:
             if not valid:
                 return CreateUserResult(success=False, message=msg, user=None)
 
-            valid, msg = User.validate_email(email)
-            if not valid:
-                return CreateUserResult(success=False, message=msg, user=None)
+            # For OAuth users, we might have generated a fallback email
+            # Skip email validation for OAuth users with generated emails
+            if not (is_federated and email.endswith("@loginradius.local")):
+                valid, msg = User.validate_email(email)
+                if not valid:
+                    return CreateUserResult(success=False, message=msg, user=None)
 
             if not is_federated:
                 valid, msg = User.validate_password(password)
@@ -220,12 +229,16 @@ class UserService:
                 first_name=first_name,
                 last_name=last_name,
                 role=cast(UserRoles, role),
+                is_federated=is_federated,
+                auth_provider=auth_provider,
+                external_id=external_id,
+                external_data=external_data,
             )
 
             # Save to database
             logger.debug(f"Creating user with data: {user.to_dict()}")
 
-            result = cast(CreateSurrealDbResult, self.db.create("User", user.to_dict()))  # type: ignore
+            result = cast(CreateSurrealDbResult, self.db.create("user", user.to_dict()))  # type: ignore
             logger.debug(f"Database create result: {result}")
             # logger.debug(f"Database create result type: {type(result)}")
 
@@ -337,7 +350,7 @@ class UserService:
 
             # Store session in database
             try:
-                self.db.create("Session", session.to_dict())
+                self.db.create("user_session", session.to_dict())
                 logger.debug(
                     f"Session stored in database: {session.session_token[:10]}..."
                 )
@@ -364,7 +377,7 @@ class UserService:
             logger.debug(f"get_user_by_username - username: {username}")
 
             result = self.db.query(
-                "SELECT * FROM User WHERE username = $username", {"username": username}
+                "SELECT * FROM user WHERE username = $username", {"username": username}
             )
 
             if result and len(result) > 0:
@@ -386,7 +399,7 @@ class UserService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM User WHERE email = $email", {"email": email}
+                "SELECT * FROM user WHERE email = $email", {"email": email}
             )
 
             if result and len(result) > 0:
@@ -397,6 +410,31 @@ class UserService:
 
         except Exception as e:
             logger.error(f"Error getting user by email: {e}")
+            return None
+
+    def get_user_by_external_id(
+        self, external_id: str, auth_provider: str
+    ) -> Optional[User]:
+        """
+        Get user by external ID and auth provider
+
+        :param external_id: External user ID from OAuth provider
+        :param auth_provider: Authentication provider (cognito, loginradius, etc.)
+        :return: User object if found, None otherwise
+        """
+        try:
+            result = self.db.query(
+                "SELECT * FROM user WHERE external_id = $external_id AND auth_provider = $auth_provider",
+                {"external_id": external_id, "auth_provider": auth_provider},
+            )
+
+            if result and len(result) > 0:
+                user_dict = result[0]
+                return User.from_dict(user_dict)
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting user by external ID: {e}")
             return None
 
     def get_user_by_id(self, user_id: str) -> Optional[User]:
@@ -667,7 +705,7 @@ class UserService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM UserSettings WHERE user_id = $user_id",
+                "SELECT * FROM user_settings WHERE user_id = $user_id",
                 {"user_id": user_id},
             )
 
@@ -724,7 +762,7 @@ class UserService:
             else:
                 # Create new settings
                 logger.debug("Creating new settings")
-                result = self.db.create("UserSettings", settings.to_dict())
+                result = self.db.create("user_settings", settings.to_dict())
                 logger.debug(f"Create result: {result}")
                 if result and result.get("id"):
                     settings.id = result["id"]

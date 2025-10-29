@@ -11,6 +11,7 @@ from typing import Any, Dict, Literal, Optional
 from settings import logger
 
 UserRoles = Literal["patient", "provider", "admin"]
+AuthProvider = Literal["local", "cognito", "loginradius"]
 
 
 class User:
@@ -38,6 +39,9 @@ class User:
         user_organizations: int = 0,
         organization_id: Optional[str] = None,
         is_federated: bool = False,
+        auth_provider: AuthProvider = "local",
+        external_id: Optional[str] = None,
+        external_data: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Initialize a User object
@@ -60,6 +64,9 @@ class User:
         :param user_organizations: Current number of organizations created by this user (default: 0)
         :param organization_id: ID of the organization this user belongs to (if applicable)
         :param is_federated: Whether the user is a federated user (e.g., created via Google sign-in)
+        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param external_id: External user ID from OAuth provider
+        :param external_data: Additional data from OAuth provider
         """
         self.id = id
         self.username = username
@@ -78,6 +85,9 @@ class User:
         self.user_organizations = user_organizations
         self.organization_id = organization_id
         self.is_federated = is_federated
+        self.auth_provider = auth_provider
+        self.external_id = external_id
+        self.external_data = external_data or {}
 
         # Hash password if provided
         self.password_hash: Optional[str] = None
@@ -92,8 +102,7 @@ class User:
 
         :return: Dictionary representation of the user
         """
-        return {
-            "id": self.id,
+        data = {
             "username": self.username,
             "email": self.email,
             "first_name": self.first_name,
@@ -109,7 +118,17 @@ class User:
             "max_organizations": self.max_organizations,
             "user_organizations": self.user_organizations,
             "organization_id": self.organization_id,
+            "is_federated": self.is_federated,
+            "auth_provider": self.auth_provider,
+            "external_id": self.external_id,
+            "external_data": self.external_data,
         }
+
+        # Only include id if it's not None (let SurrealDB generate it for new records)
+        if self.id is not None:
+            data["id"] = self.id
+
+        return data
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -182,6 +201,10 @@ class User:
             max_organizations=data.get("max_organizations", 1),
             user_organizations=data.get("user_organizations", 0),
             organization_id=data.get("organization_id"),
+            is_federated=data.get("is_federated", False),
+            auth_provider=data.get("auth_provider", "local"),
+            external_id=data.get("external_id"),
+            external_data=data.get("external_data"),
         )
         # Set password hash if it exists in the data
         if "password_hash" in data:
@@ -367,7 +390,7 @@ class User:
             DEFINE FIELD email ON user TYPE string ASSERT string::is::email($);
             DEFINE FIELD first_name ON user TYPE string;
             DEFINE FIELD last_name ON user TYPE string;
-            DEFINE FIELD role ON user TYPE "patient" | "provider" | "admin;
+            DEFINE FIELD role ON user TYPE "patient" | "provider" | "admin";
             DEFINE FIELD specialty ON user TYPE string;
             DEFINE FIELD clinic_name ON user TYPE string;
             DEFINE FIELD clinic_address ON user TYPE string;
@@ -375,6 +398,10 @@ class User:
             DEFINE FIELD max_organizations ON user TYPE int DEFAULT 1;
             DEFINE FIELD user_organizations ON user TYPE int DEFAULT 0;
             DEFINE FIELD organization_id ON user TYPE record<organization>;
+            DEFINE FIELD is_federated ON user TYPE bool DEFAULT false;
+            DEFINE FIELD auth_provider ON user TYPE "local" | "cognito" | "loginradius" DEFAULT "local";
+            DEFINE FIELD external_id ON user TYPE string;
+            DEFINE FIELD external_data ON user TYPE object DEFAULT {};
             DEFINE FIELD created_at ON user TYPE datetime VALUE time::now() READONLY;
             DEFINE FIELD updated_at ON user TYPE datetime VALUE time::now();
         """

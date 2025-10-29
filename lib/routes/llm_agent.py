@@ -3,16 +3,79 @@ LLM Agent Endpoint
 """
 
 import asyncio
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
-from flask import Response, jsonify, request, session
+from flask import Response, jsonify, request
 
 from lib.data_types import UserID
-from lib.llm.agent import LLMAgent, LLMModel
+from lib.llm.agent import DEFAULT_SYSTEM_PROMPT, LLMAgent, LLMModel, ToolDefinition
+from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
 from lib.services.auth_decorators import get_current_user
 from lib.services.llm_chat_service import LLMChatService
 from lib.services.openai_security import get_openai_security_service
 from settings import AGENT_VERSION, MCP_URL, logger, mcp_config
+
+
+async def _get_agent_response(
+    mcp_conf: Dict[str, Any],
+    api_key: str,
+    prompt: str,
+    history: List[Dict[str, Any]],
+    response_format: Any,
+    **kwargs: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Handles the entire async workflow for getting a response from the LLM agent.
+    """
+    manager = HierarchicalAgentManager(mcp_conf)
+
+    async with manager:
+        system_prompt_val = kwargs.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
+        system_prompt: str = (
+            system_prompt_val
+            if isinstance(system_prompt_val, str)
+            else DEFAULT_SYSTEM_PROMPT
+        )
+
+        agent = LLMAgent(
+            mcp_config=dict(cast(Dict[str, Any], mcp_config)),
+            api_key=api_key,
+            model=LLMModel.GPT_5_NANO,
+            system_prompt=system_prompt,
+        )
+
+        # 3) Wire the manager's discovered tools into the agent
+        agent.tool_definitions = cast(List[ToolDefinition], manager.openai_defs)
+        agent.tool_func_dict = manager.func_lookup
+
+        # 4) Set the conversation history from the database
+        # Convert LLMChat message format to LLMAgent format
+        converted_history = []
+        for msg in history:
+            if isinstance(msg, dict):
+                # Convert sender to role and text to content
+                role = msg.get("sender")
+                content = msg.get("text", "")
+
+                # Map sender values to expected role values
+                if role == "Me":
+                    role = "user"
+                elif role == "AI Assistant":
+                    role = "assistant"
+                elif role is None:
+                    # Skip messages with None sender
+                    continue
+
+                converted_history.append({"role": role, "content": content})
+
+        agent.message_history = converted_history
+
+        # 3. Get the completion from the agent
+        response = await agent.complete(
+            prompt,
+            response_format=response_format,
+        )
+        return response
 
 
 def llm_agent_endpoint_route() -> Tuple[Response, int]:
@@ -75,13 +138,34 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                 UserID(current_user_id), assistant_id, "Me", prompt
             )
 
+            response_format = data.get("response_format")  # type: ignore
+
+            # Use the persistent chat history as context
+            history: list[Dict[str, Any]] = chat.messages
+            logger.debug(f"History: {history}")
+
+            agent_mcp_config = (
+                dict(cast(Dict[str, Any], mcp_config))
+                if AGENT_VERSION == "v2"
+                else {"url": MCP_URL}  # Adapt based on your config structure
+            )
+
             if AGENT_VERSION:
                 # raise NotImplementedError("LLM Agent v2 is not yet implemented")
-                agent = asyncio.run(
-                    LLMAgent.from_mcp_config(
-                        mcp_config=dict(cast(Dict[str, Any], mcp_config)),
+                # agent = asyncio.run(
+                #     LLMAgent.from_mcp_config(
+                #         mcp_config=dict(cast(Dict[str, Any], mcp_config)),
+                #         api_key=openai_api_key,
+                #         model=LLMModel.GPT_5_NANO,
+                #     )
+                # )
+                response = asyncio.run(
+                    _get_agent_response(
+                        mcp_conf=agent_mcp_config,
                         api_key=openai_api_key,
-                        model=LLMModel.GPT_5_NANO,
+                        prompt=prompt,
+                        history=history,
+                        response_format=response_format,
                     )
                 )
             else:
@@ -93,15 +177,10 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                     )
                 )
 
-            response_format = data.get("response_format")  # type: ignore
+                response = asyncio.run(
+                    agent.complete(prompt, response_format=response_format)
+                )
 
-            # Use the persistent chat history as context
-            history: list[Dict[str, Any]] = chat.messages
-            print(f"History: {history}")  # Debugging line to check history content
-            # You may want to format this for your LLM
-            response = asyncio.run(
-                agent.complete(prompt, response_format=response_format)
-            )  # Remove history parameter as it's not supported
             logger.debug("response", type(response), response)
 
             # Log API usage (only if using stored key, not if provided in request)
@@ -122,8 +201,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             )
 
             # Save updated agent state to session (only for session-based auth)
-            if hasattr(request, "session"):
-                session["agent_data"] = agent.to_dict()
+            # if hasattr(request, "session"): session["agent_data"] = agent.to_dict()
 
             # Return chat data with tool usage information
             chat_data = chat.to_dict()

@@ -69,6 +69,11 @@ from lib.routes.chat import (
 )
 from lib.routes.education import get_education_content_route
 from lib.routes.llm_agent import llm_agent_endpoint_route
+from lib.routes.loginradius_auth import (
+    get_loginradius_config_route,
+    loginradius_logout_route,
+    verify_loginradius_token_route,
+)
 from lib.routes.metrics import metrics_bp
 from lib.routes.optimal import call_optimal_route
 from lib.routes.organizations import get_organizations_route
@@ -170,6 +175,9 @@ CORS(
                 "http://localhost:3012",
                 "http://127.0.0.1:3012",
                 "https://demo.arsmedicatech.com",
+                # Flutter:
+                "http://localhost:5001",
+                "http://127.0.0.1:5001",
             ],
             "supports_credentials": True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -186,7 +194,7 @@ app.config["SESSION_TYPE"] = "filesystem"
 if DEBUG:
     app.config.update(
         SESSION_COOKIE_SECURE=False,  # False only on http://localhost
-        SESSION_COOKIE_SITE="None",
+        SESSION_COOKIE_SAMESITE="None",
         SESSION_COOKIE_DOMAIN=None,  # No domain set for local development
     )
 else:
@@ -1238,13 +1246,41 @@ def login_cognito():
     return redirect(cognito_url)
 
 
-@app.route("/auth/callback", methods=["GET", "POST"])
+@app.route("/api/auth/callback", methods=["GET", "POST"])
 def cognito_callback() -> Union[Tuple[Response, int], BaseResponse]:
     """
     Cognito login endpoint.
     :return: Response object with login status.
     """
     return cognito_login_route()
+
+
+# LoginRadius OIDC Authentication Routes
+@app.route("/api/auth/loginradius/verify", methods=["POST"])
+def loginradius_verify() -> Tuple[Response, int]:
+    """
+    Verify LoginRadius ID token and create/update user session.
+    :return: Response object with authentication result.
+    """
+    return verify_loginradius_token_route()
+
+
+@app.route("/api/auth/loginradius/logout", methods=["POST"])
+def loginradius_logout() -> Tuple[Response, int]:
+    """
+    Handle LoginRadius logout.
+    :return: Response object with logout result.
+    """
+    return loginradius_logout_route()
+
+
+@app.route("/api/auth/loginradius/config", methods=["GET"])
+def loginradius_config() -> Tuple[Response, int]:
+    """
+    Get LoginRadius configuration for frontend.
+    :return: Response object with LoginRadius configuration.
+    """
+    return get_loginradius_config_route()
 
 
 @app.route("/test/auth-error")

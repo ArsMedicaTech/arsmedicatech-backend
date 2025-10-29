@@ -82,11 +82,30 @@ class UserSession:
 
         :return: True if session is expired, False otherwise
         """
-        try:
-            expires = self.expires_at
-            return datetime.now(timezone.utc) > expires
-        except (ValueError, TypeError):
+        if not self.expires_at:
             return True
+
+        expires_dt = self.expires_at
+
+        # --- CONVERSION LOGIC ---
+        # If it's an integer (Unix timestamp), convert it
+        if isinstance(expires_dt, (int, float)):
+            expires_dt = datetime.fromtimestamp(expires_dt, tz=timezone.utc)
+
+        # If it's a string, convert it
+        elif isinstance(expires_dt, str):
+            # The 'Z' at the end means UTC (Zulu time)
+            if expires_dt.endswith("Z"):
+                expires_dt = expires_dt[:-1] + "+00:00"
+            expires_dt = datetime.fromisoformat(expires_dt)
+
+        # Now, ensure it's timezone-aware before comparing
+        if expires_dt.tzinfo is None:
+            expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+        # --- END CONVERSION LOGIC ---
+
+        # The comparison will now work correctly
+        return datetime.now(timezone.utc) > expires_dt
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -121,6 +140,7 @@ class UserSession:
         # Set the token from the data if it exists
         if "session_token" in data:
             session.session_token = data["session_token"]
+        print("1`1```1212`23` ABOUT TO RETURN:", session)
         return session
 
     @classmethod
