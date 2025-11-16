@@ -9,7 +9,6 @@ from lib.logger import Logger
 
 logger: Logger = Logger()
 
-
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
 

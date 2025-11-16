@@ -9,7 +9,7 @@ from amt_nano.services.icd_autocoder_service import ICDAutoCoderService
 from flask import Response, jsonify, request
 
 from lib.data_types import PatientID
-from lib.models.patient.main import (
+from lib.models.patient import (
     create_encounter,
     create_patient,
     delete_encounter,

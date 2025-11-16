@@ -7,7 +7,7 @@ from typing import Any, List, Optional
 import factory  # type: ignore
 from faker import Faker
 
-from lib.models.patient.patient_model import Patient
+from lib.models.patient import Patient
 
 fake = Faker()
 

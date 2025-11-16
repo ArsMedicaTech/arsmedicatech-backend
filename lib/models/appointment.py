@@ -2,38 +2,16 @@
 Appointment model for scheduling functionality
 """
 
-from datetime import datetime, timedelta, timezone
-from enum import Enum
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, Optional
 
+from lib.events import AppointmentStatus
+from lib.models.common import Model
 from settings import logger
+from utils.utils import diff_times_in_seconds
 
 
-class AppointmentStatus(Enum):
-    """
-    Enum for appointment status values.
-    """
-
-    SCHEDULED = "scheduled"
-    CONFIRMED = "confirmed"
-    CANCELLED = "cancelled"
-    COMPLETED = "completed"
-    NO_SHOW = "no_show"
-
-
-class AppointmentType(Enum):
-    """
-    Enum for appointment type values.
-    """
-
-    CONSULTATION = "consultation"
-    FOLLOW_UP = "follow_up"
-    EMERGENCY = "emergency"
-    ROUTINE = "routine"
-    SPECIALIST = "specialist"
-
-
-class Appointment:
+class Appointment(Model):
     """
     Model representing a healthcare appointment.
     """
@@ -42,25 +20,25 @@ class Appointment:
         self,
         patient_id: str,
         provider_id: str,
-        appointment_date: str,
-        start_time: str,
-        end_time: str,
+        appointment_date: date,
+        start_time: time,
+        end_time: time,
         appointment_type: str = "consultation",
         status: str = "scheduled",
         notes: Optional[str] = None,
         location: Optional[str] = None,
         id: Optional[str] = None,
-        created_at: Optional[str] = None,
-        updated_at: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = None,
     ) -> None:
         """
         Initialize an Appointment object
 
         :param patient_id: ID of the patient
         :param provider_id: ID of the healthcare provider
-        :param appointment_date: Date of appointment (YYYY-MM-DD)
-        :param start_time: Start time (HH:MM)
-        :param end_time: End time (HH:MM)
+        :param appointment_date: Date of appointment
+        :param start_time: Start time
+        :param end_time: End time
         :param appointment_type: Type of appointment
         :param status: Current status of appointment
         :param notes: Additional notes
@@ -95,8 +73,8 @@ class Appointment:
         self.notes = notes or ""
         self.location = location or ""
         self.id = id
-        self.created_at = created_at or datetime.now(timezone.utc).isoformat()
-        self.updated_at = updated_at or datetime.now(timezone.utc).isoformat()
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.updated_at = updated_at or datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -147,13 +125,12 @@ class Appointment:
             for field in required_fields:
                 if not isinstance(data.get(field), str) or not data.get(field):
                     raise ValueError(f"Missing or invalid required field: {field}")
-
             appointment = cls(
                 patient_id=str(data.get("patient_id")),
                 provider_id=str(data.get("provider_id")),
-                appointment_date=str(data.get("appointment_date")),
-                start_time=str(data.get("start_time")),
-                end_time=str(data.get("end_time")),
+                appointment_date=data.get("appointment_date"),  # type: ignore We already check if this is in the required fields
+                start_time=data.get("start_time"),  # type: ignore See above
+                end_time=data.get("end_time"),  # type: ignore See above
                 appointment_type=data.get("appointment_type", "consultation"),
                 status=data.get("status", "scheduled"),
                 notes=data.get("notes"),
@@ -178,10 +155,8 @@ class Appointment:
         :return: Duration in minutes, or 0 if times are invalid
         """
         try:
-            start = datetime.strptime(self.start_time, "%H:%M")
-            end = datetime.strptime(self.end_time, "%H:%M")
-            duration = end - start
-            return int(duration.total_seconds() / 60)
+            duration = diff_times_in_seconds(self.start_time, self.end_time)
+            return int(duration / 60)
         except ValueError:
             return 0
 
@@ -227,9 +202,7 @@ class Appointment:
         :return: Datetime object representing appointment start, or None if invalid
         """
         try:
-            date_obj = datetime.strptime(self.appointment_date, "%Y-%m-%d")
-            time_obj = datetime.strptime(self.start_time, "%H:%M").time()
-            return datetime.combine(date_obj.date(), time_obj)
+            return datetime.combine(self.appointment_date, self.start_time)
         except ValueError:
             return None
 

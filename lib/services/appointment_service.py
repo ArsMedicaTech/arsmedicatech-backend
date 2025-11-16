@@ -2,8 +2,8 @@
 Scheduling service for managing appointments
 """
 
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import date, datetime, time, timedelta
+from typing import Dict, List, Optional, Tuple
 
 from amt_nano.db.surreal import DbController
 
@@ -16,10 +16,11 @@ from lib.events import (
 )
 from lib.infra.event_bus import event_bus
 from lib.models.appointment import Appointment, AppointmentStatus
-from settings import logger
+from lib.models.common import OperationResult, Service
+from settings import DEBUG, logger
 
 
-class SchedulingService:
+class AppointmentService(Service[Appointment]):
     """
     Service for managing appointments
     """
@@ -31,44 +32,20 @@ class SchedulingService:
         :return: None
         """
         self.db = DbController()
+        self.logger = logger
+        self.debug = DEBUG
 
-    def connect(self) -> None:
-        """
-        Connect to database
-
-        This method establishes a connection to the database.
-        If the connection fails, it logs the error and raises an exception.
-        :raises Exception: If the database connection fails
-
-        :return: None
-        """
-        try:
-            self.db.connect()
-        except Exception as e:
-            logger.error(f"Error connecting to database: {e}")
-            raise e
-
-    def close(self) -> None:
-        """
-        Close database connection
-
-        This method closes the connection to the database.
-
-        :return: None
-        """
-        self.db.close()
-
-    def create_appointment(
+    def create(
         self,
         patient_id: str,
         provider_id: str,
-        appointment_date: str,
-        start_time: str,
-        end_time: str,
+        appointment_date: date,
+        start_time: time,
+        end_time: time,
         appointment_type: str = "consultation",
         notes: Optional[str] = None,
         location: Optional[str] = None,
-    ) -> Tuple[bool, str, Optional[Appointment]]:
+    ) -> OperationResult[Appointment]:
         """
         Create a new appointment
 
@@ -87,31 +64,11 @@ class SchedulingService:
         :return: (success, message, appointment)
         """
         try:
-            # Validate inputs
-            if not all(
-                [patient_id, provider_id, appointment_date, start_time, end_time]
-            ):
-                return False, "Missing required fields", None
-
-            # Validate date format
-            try:
-                datetime.strptime(appointment_date, "%Y-%m-%d")
-            except ValueError:
-                return False, "Invalid date format. Use YYYY-MM-DD", None
-
-            # Validate time format
-            try:
-                datetime.strptime(start_time, "%H:%M")
-                datetime.strptime(end_time, "%H:%M")
-            except ValueError:
-                return False, "Invalid time format. Use HH:MM", None
-
-            # Check for time conflicts
             conflict = self._check_time_conflict(
                 provider_id, appointment_date, start_time, end_time
             )
             if conflict:
-                return False, f"Time conflict: {conflict}", None
+                return OperationResult(False, f"Time conflict: {conflict}", None)
 
             # Create appointment
             appointment = Appointment(
@@ -145,14 +102,156 @@ class SchedulingService:
                         )
                     )
 
-                return True, "Appointment created successfully", appointment
+                return OperationResult(
+                    True, "Appointment created successfully", appointment
+                )
             else:
-                return False, "Failed to create appointment", None
+                return OperationResult(False, "Failed to create appointment", None)
 
         except Exception as e:
-            return False, f"Error creating appointment: {str(e)}", None
+            return OperationResult(False, f"Error creating appointment: {str(e)}", None)
 
-    def get_appointment(self, appointment_id: str) -> Optional[Appointment]:
+    def update(self, id: str, obj: Appointment) -> OperationResult[Appointment]:
+        """
+        Update an appointment
+
+        This method updates an existing appointment with the provided fields.
+        It checks for time conflicts if the appointment date or time is being updated.
+        :param appointment_id: ID of the appointment to update
+        :param updates: Dictionary of fields to update (e.g., {'start_time': '10:00', 'notes': 'Updated notes'})
+        :return: (success, message)
+        """
+        try:
+            # Get current appointment
+            appointment = self.get_appointment(appointment_id)
+            if not appointment:
+                return False, "Appointment not found"
+
+            # Check for time conflicts if time is being updated
+            if (
+                "start_time" in updates
+                or "end_time" in updates
+                or "appointment_date" in updates
+            ):
+                new_date = updates.get("appointment_date", appointment.appointment_date)
+                new_start = updates.get("start_time", appointment.start_time)
+                new_end = updates.get("end_time", appointment.end_time)
+
+                conflict = self._check_time_conflict(
+                    appointment.provider_id,
+                    new_date,
+                    new_start,
+                    new_end,
+                    exclude_id=appointment_id,
+                )
+                if conflict:
+                    return False, f"Time conflict: {conflict}"
+
+            # Update fields
+            for key, value in updates.items():
+                if hasattr(appointment, key):
+                    setattr(appointment, key, value)
+
+            from datetime import timezone
+
+            appointment.updated_at = datetime.now(timezone.utc).isoformat()
+
+            # Save to database
+            result = self.db.update(appointment_id, appointment.to_dict())
+            if result:
+                # Publish event after successful database update
+                event_bus.publish(
+                    AppointmentUpdated(
+                        appointment_id=appointment_id,
+                        patient_id=appointment.patient_id,
+                        provider_id=appointment.provider_id,
+                        appointment_date=appointment.appointment_date,
+                        start_time=appointment.start_time,
+                        end_time=appointment.end_time,
+                        appointment_type=appointment.appointment_type,
+                        status=appointment.status,
+                        changes=updates,
+                        occurred_at=datetime.now(),
+                    )
+                )
+                return True, "Appointment updated successfully"
+            else:
+                return False, "Failed to update appointment"
+
+        except Exception as e:
+            return False, f"Error updating appointment: {str(e)}"
+
+    def delete(self, id: str) -> OperationResult[Appointment]:
+        """
+        Update an appointment
+
+        This method updates an existing appointment with the provided fields.
+        It checks for time conflicts if the appointment date or time is being updated.
+        :param appointment_id: ID of the appointment to update
+        :param updates: Dictionary of fields to update (e.g., {'start_time': '10:00', 'notes': 'Updated notes'})
+        :return: (success, message)
+        """
+        try:
+            # Get current appointment
+            appointment = self.get_appointment(appointment_id)
+            if not appointment:
+                return False, "Appointment not found"
+
+            # Check for time conflicts if time is being updated
+            if (
+                "start_time" in updates
+                or "end_time" in updates
+                or "appointment_date" in updates
+            ):
+                new_date = updates.get("appointment_date", appointment.appointment_date)
+                new_start = updates.get("start_time", appointment.start_time)
+                new_end = updates.get("end_time", appointment.end_time)
+
+                conflict = self._check_time_conflict(
+                    appointment.provider_id,
+                    new_date,
+                    new_start,
+                    new_end,
+                    exclude_id=appointment_id,
+                )
+                if conflict:
+                    return False, f"Time conflict: {conflict}"
+
+            # Update fields
+            for key, value in updates.items():
+                if hasattr(appointment, key):
+                    setattr(appointment, key, value)
+
+            from datetime import timezone
+
+            appointment.updated_at = datetime.now(timezone.utc).isoformat()
+
+            # Save to database
+            result = self.db.update(appointment_id, appointment.to_dict())
+            if result:
+                # Publish event after successful database update
+                event_bus.publish(
+                    AppointmentUpdated(
+                        appointment_id=appointment_id,
+                        patient_id=appointment.patient_id,
+                        provider_id=appointment.provider_id,
+                        appointment_date=appointment.appointment_date,
+                        start_time=appointment.start_time,
+                        end_time=appointment.end_time,
+                        appointment_type=appointment.appointment_type,
+                        status=appointment.status,
+                        changes=updates,
+                        occurred_at=datetime.now(),
+                    )
+                )
+                return True, "Appointment updated successfully"
+            else:
+                return False, "Failed to update appointment"
+
+        except Exception as e:
+            return False, f"Error updating appointment: {str(e)}"
+
+    def get_by_id(self, id: str) -> OperationResult[Appointment]:
         """
         Get appointment by ID
 
@@ -174,8 +273,59 @@ class SchedulingService:
             logger.error(f"Error getting appointment: {e}")
             return None
 
+    def get_all(self) -> OperationResult[List[Appointment]]:
+        """
+        Get all appointments (for debugging)
+
+        This method retrieves all appointments from the database, ordered by date and time.
+        It is primarily used for debugging purposes to ensure the appointment table is functioning correctly.
+        :return: List of all Appointment objects
+        """
+        try:
+            logger.debug("get_all_appointments: Starting query...")
+
+            # First, let's see what tables exist
+            logger.debug("Checking what tables exist...")
+            tables_query = "INFO FOR DB"
+            tables_result = self.db.query(tables_query, {})
+            logger.debug(f"Tables query result: {tables_result}")
+
+            # Try a simple query to see what's in the appointment table
+            logger.debug("Trying simple SELECT query...")
+            simple_query = "SELECT * FROM appointment"
+            simple_result = self.db.query(simple_query, {})
+            logger.debug(f"Simple query result: {simple_result}")
+
+            # Now try the full query
+            query = "SELECT * FROM appointment ORDER BY appointment_date, start_time"
+            logger.debug(f"Executing query: {query}")
+            results = self.db.query(query, {})
+            logger.debug(f"Full query results: {results}")
+
+            appointments: List[Appointment] = []
+
+            for result in results:
+                logger.debug(f"Processing result: {result}")
+                # The result is already the record, not nested under 'result'
+                logger.debug(f"Processing record: {result}")
+                appointments.append(Appointment.from_dict(result))
+                if result.get("result"):
+                    # Fallback for nested structure
+                    for record in result["result"]:
+                        logger.debug(f"Processing nested record: {record}")
+                        appointments.append(Appointment.from_dict(record))
+
+            logger.debug(f"Final appointments list: {appointments}")
+            return appointments
+        except Exception as e:
+            logger.error(f"Error getting all appointments: {e}")
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return []
+
     def get_appointments_by_date(
-        self, date: str, provider_id: Optional[str] = None
+        self, date: date, provider_id: Optional[str] = None
     ) -> List[Appointment]:
         """
         Get appointments for a specific date
@@ -273,129 +423,6 @@ class SchedulingService:
         except Exception as e:
             logger.error(f"Error getting appointments by provider: {e}")
             return []
-
-    def get_all_appointments(self) -> List[Appointment]:
-        """
-        Get all appointments (for debugging)
-
-        This method retrieves all appointments from the database, ordered by date and time.
-        It is primarily used for debugging purposes to ensure the appointment table is functioning correctly.
-        :return: List of all Appointment objects
-        """
-        try:
-            logger.debug("get_all_appointments: Starting query...")
-
-            # First, let's see what tables exist
-            logger.debug("Checking what tables exist...")
-            tables_query = "INFO FOR DB"
-            tables_result = self.db.query(tables_query, {})
-            logger.debug(f"Tables query result: {tables_result}")
-
-            # Try a simple query to see what's in the appointment table
-            logger.debug("Trying simple SELECT query...")
-            simple_query = "SELECT * FROM appointment"
-            simple_result = self.db.query(simple_query, {})
-            logger.debug(f"Simple query result: {simple_result}")
-
-            # Now try the full query
-            query = "SELECT * FROM appointment ORDER BY appointment_date, start_time"
-            logger.debug(f"Executing query: {query}")
-            results = self.db.query(query, {})
-            logger.debug(f"Full query results: {results}")
-
-            appointments: List[Appointment] = []
-
-            for result in results:
-                logger.debug(f"Processing result: {result}")
-                # The result is already the record, not nested under 'result'
-                logger.debug(f"Processing record: {result}")
-                appointments.append(Appointment.from_dict(result))
-                if result.get("result"):
-                    # Fallback for nested structure
-                    for record in result["result"]:
-                        logger.debug(f"Processing nested record: {record}")
-                        appointments.append(Appointment.from_dict(record))
-
-            logger.debug(f"Final appointments list: {appointments}")
-            return appointments
-        except Exception as e:
-            logger.error(f"Error getting all appointments: {e}")
-            import traceback
-
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return []
-
-    def update_appointment(
-        self, appointment_id: str, updates: Dict[str, Any]
-    ) -> Tuple[bool, str]:
-        """
-        Update an appointment
-
-        This method updates an existing appointment with the provided fields.
-        It checks for time conflicts if the appointment date or time is being updated.
-        :param appointment_id: ID of the appointment to update
-        :param updates: Dictionary of fields to update (e.g., {'start_time': '10:00', 'notes': 'Updated notes'})
-        :return: (success, message)
-        """
-        try:
-            # Get current appointment
-            appointment = self.get_appointment(appointment_id)
-            if not appointment:
-                return False, "Appointment not found"
-
-            # Check for time conflicts if time is being updated
-            if (
-                "start_time" in updates
-                or "end_time" in updates
-                or "appointment_date" in updates
-            ):
-                new_date = updates.get("appointment_date", appointment.appointment_date)
-                new_start = updates.get("start_time", appointment.start_time)
-                new_end = updates.get("end_time", appointment.end_time)
-
-                conflict = self._check_time_conflict(
-                    appointment.provider_id,
-                    new_date,
-                    new_start,
-                    new_end,
-                    exclude_id=appointment_id,
-                )
-                if conflict:
-                    return False, f"Time conflict: {conflict}"
-
-            # Update fields
-            for key, value in updates.items():
-                if hasattr(appointment, key):
-                    setattr(appointment, key, value)
-
-            from datetime import timezone
-
-            appointment.updated_at = datetime.now(timezone.utc).isoformat()
-
-            # Save to database
-            result = self.db.update(appointment_id, appointment.to_dict())
-            if result:
-                # Publish event after successful database update
-                event_bus.publish(
-                    AppointmentUpdated(
-                        appointment_id=appointment_id,
-                        patient_id=appointment.patient_id,
-                        provider_id=appointment.provider_id,
-                        appointment_date=appointment.appointment_date,
-                        start_time=appointment.start_time,
-                        end_time=appointment.end_time,
-                        appointment_type=appointment.appointment_type,
-                        status=appointment.status,
-                        changes=updates,
-                        occurred_at=datetime.now(),
-                    )
-                )
-                return True, "Appointment updated successfully"
-            else:
-                return False, "Failed to update appointment"
-
-        except Exception as e:
-            return False, f"Error updating appointment: {str(e)}"
 
     def cancel_appointment(
         self, appointment_id: str, reason: Optional[str] = None
@@ -568,9 +595,9 @@ class SchedulingService:
     def _check_time_conflict(
         self,
         provider_id: str,
-        date: str,
-        start_time: str,
-        end_time: str,
+        date: date,
+        start_time: time,
+        end_time: time,
         exclude_id: Optional[str] = None,
     ) -> Optional[str]:
         """
@@ -608,7 +635,9 @@ class SchedulingService:
             logger.error(f"Error checking time conflict: {e}")
             return "Error checking availability"
 
-    def _times_overlap(self, start1: str, end1: str, start2: str, end2: str) -> bool:
+    def _times_overlap(
+        self, start1: datetime, end1: datetime, start2: datetime, end2: datetime
+    ) -> bool:
         """
         Check if two time ranges overlap
 
@@ -620,11 +649,6 @@ class SchedulingService:
         :return: True if the time ranges overlap, False otherwise
         """
         try:
-            s1 = datetime.strptime(start1, "%H:%M")
-            e1 = datetime.strptime(end1, "%H:%M")
-            s2 = datetime.strptime(start2, "%H:%M")
-            e2 = datetime.strptime(end2, "%H:%M")
-
-            return s1 < e2 and s2 < e1
+            return start1 < end2 and start2 < end1
         except ValueError:
             return False

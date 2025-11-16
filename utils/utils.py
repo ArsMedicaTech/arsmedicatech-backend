@@ -2,7 +2,7 @@
 
 import socket
 import ssl
-from datetime import datetime
+from datetime import datetime, time, timedelta, timezone
 from pprint import pprint
 
 from settings import logger
@@ -168,3 +168,29 @@ with open(file_path, "r") as f:
 
 
 print(calculate_row_size(s))  # 202
+
+
+def km_m(meters: float) -> float:
+    """
+    Converts kilometers to meters.
+
+    Args:
+        meters (float): The distance in kilometers.
+
+    Returns:
+        float: The distance in meters.
+    """
+    return meters * 1000
+
+
+def days_till_now_utc(day_delta: int) -> datetime:
+    return datetime.now(timezone.utc) + timedelta(days=day_delta)
+
+
+# https://stackoverflow.com/a/29560472
+def diff_times_in_seconds(t1: time, t2: time) -> int:
+    h1, m1, s1 = t1.hour, t1.minute, t1.second
+    h2, m2, s2 = t2.hour, t2.minute, t2.second
+    t1_secs = s1 + 60 * (m1 + 60 * h1)
+    t2_secs = s2 + 60 * (m2 + 60 * h2)
+    return t2_secs - t1_secs

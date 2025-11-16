@@ -7,9 +7,10 @@ from typing import Any, Dict, List, Literal, Optional, TypedDict, cast
 
 from amt_nano.db.surreal import DbController
 
-from lib.models.user.user import User, UserRoles
-from lib.models.user.user_session import UserSession
-from lib.models.user.user_settings import UserSettings
+from lib.models.patient import PatientController
+from lib.models.user import User, UserRoles
+from lib.models.user_session import UserSession
+from lib.models.user_settings import UserSettings
 from settings import logger
 
 
@@ -263,8 +264,6 @@ class UserService:
                 # If the user is a patient, create a corresponding Patient record
                 if user.role == "patient" and user.id:
                     try:
-                        from lib.models.patient.patient_crud import create_patient
-
                         user_id = str(user.id)
                         if ":" in user_id:
                             patient_id = user_id.split(":", 1)[1]
@@ -285,7 +284,7 @@ class UserService:
                         for key in patient_data:
                             if key != "location" and patient_data[key] is None:
                                 patient_data[key] = ""
-                        patient_result = create_patient(patient_data)
+                        patient_result = PatientController.create_patient(patient_data)
                         if not patient_result:
                             logger.error(
                                 f"Failed to create patient record for user: {user.id}"

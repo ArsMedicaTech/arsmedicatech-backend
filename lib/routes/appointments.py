@@ -6,8 +6,8 @@ from typing import Any, Dict, Tuple
 
 from flask import Response, jsonify, request
 
+from lib.services.appointment_service import SchedulingService
 from lib.services.auth_decorators import get_current_user
-from lib.services.scheduling import SchedulingService
 from settings import logger
 
 

@@ -4,6 +4,7 @@ Domain events for webhook system
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, Optional
 
 
@@ -66,3 +67,27 @@ class AppointmentCompleted:
     patient_id: str
     provider_id: str
     occurred_at: datetime
+
+
+class AppointmentStatus(Enum):
+    """
+    Enum for appointment status values.
+    """
+
+    SCHEDULED = "scheduled"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+    NO_SHOW = "no_show"
+
+
+class AppointmentType(Enum):
+    """
+    Enum for appointment type values.
+    """
+
+    CONSULTATION = "consultation"
+    FOLLOW_UP = "follow_up"
+    EMERGENCY = "emergency"
+    ROUTINE = "routine"
+    SPECIALIST = "specialist"
