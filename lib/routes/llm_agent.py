@@ -8,7 +8,13 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from flask import Response, jsonify, request
 
 from lib.data_types import UserID
-from lib.llm.agent import DEFAULT_SYSTEM_PROMPT, LLMAgent, LLMModel, ToolDefinition
+from lib.llm.agent import (
+    DEFAULT_SYSTEM_PROMPT,
+    LLMAgent,
+    LLMModel,
+    ToolDefinition,
+    merge_mcp_configs,
+)
 from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
 from lib.services.auth_decorators import get_current_user
 from lib.services.llm_chat_service import LLMChatService
@@ -22,12 +28,24 @@ async def _get_agent_response(
     prompt: str,
     history: List[Dict[str, Any]],
     response_format: Any,
+    client_mcp_config: Optional[Dict[str, Any]] = None,
     **kwargs: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     Handles the entire async workflow for getting a response from the LLM agent.
+
+    :param mcp_conf: Base server-side MCP configuration
+    :param api_key: API key for accessing the LLM service
+    :param prompt: User prompt to send to the LLM
+    :param history: Conversation history
+    :param response_format: Format for the LLM's response
+    :param client_mcp_config: Optional client-side MCP configuration to merge with server config
+    :param kwargs: Additional parameters
+    :return: Dict containing the LLM's response and tool usage information
     """
-    manager = HierarchicalAgentManager(mcp_conf)
+    # Merge client config with server config if provided
+    merged_config = merge_mcp_configs(mcp_conf, client_mcp_config)
+    manager = HierarchicalAgentManager(merged_config)
 
     async with manager:
         system_prompt_val = kwargs.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
@@ -38,7 +56,6 @@ async def _get_agent_response(
         )
 
         agent = LLMAgent(
-            mcp_config=dict(cast(Dict[str, Any], mcp_config)),
             api_key=api_key,
             model=LLMModel.GPT_5_NANO,
             system_prompt=system_prompt,
@@ -150,6 +167,11 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                 else {"url": MCP_URL}  # Adapt based on your config structure
             )
 
+            # Extract client-side MCP config from request if provided
+            client_mcp_config = data.get("mcp_config")  # type: ignore
+            if client_mcp_config and not isinstance(client_mcp_config, dict):
+                return jsonify({"error": "mcp_config must be a dictionary"}), 400
+
             if AGENT_VERSION:
                 # raise NotImplementedError("LLM Agent v2 is not yet implemented")
                 # agent = asyncio.run(
@@ -166,6 +188,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                         prompt=prompt,
                         history=history,
                         response_format=response_format,
+                        client_mcp_config=client_mcp_config,
                     )
                 )
             else:
