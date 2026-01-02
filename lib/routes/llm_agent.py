@@ -66,26 +66,9 @@ async def _get_agent_response(
         agent.tool_func_dict = manager.func_lookup
 
         # 4) Set the conversation history from the database
-        # Convert LLMChat message format to LLMAgent format
-        converted_history = []
-        for msg in history:
-            if isinstance(msg, dict):
-                # Convert sender to role and text to content
-                role = msg.get("sender")
-                content = msg.get("text", "")
-
-                # Map sender values to expected role values
-                if role == "Me":
-                    role = "user"
-                elif role == "AI Assistant":
-                    role = "assistant"
-                elif role is None:
-                    # Skip messages with None sender
-                    continue
-
-                converted_history.append({"role": role, "content": content})
-
-        agent.message_history = converted_history
+        # History is already in the correct format from get_thread_history
+        # (list of dicts with 'role' and 'content' keys)
+        agent.message_history = history
 
         # 3. Get the completion from the agent
         response = await agent.complete(
@@ -117,8 +100,12 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
     llm_chat_service.connect()
     try:
         if request.method == "GET":
-            chats = llm_chat_service.get_llm_chats_for_user(UserID(current_user_id))
-            return jsonify([chat.to_dict() for chat in chats]), 200
+            # Support both new thread-based and legacy chat retrieval
+            assistant_id = request.args.get("assistant_id")
+            threads = llm_chat_service.get_threads_for_user(
+                UserID(current_user_id), assistant_id
+            )
+            return jsonify([thread.to_dict() for thread in threads]), 200
         elif request.method == "POST":
             data: Optional[Dict[str, Any]] = request.json
             if data is None:
@@ -128,6 +115,32 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             prompt = data.get("prompt")
             if not prompt:
                 return jsonify({"error": "No prompt provided"}), 400
+
+            # Determine thread ID: either provided directly or find/create based on context
+            thread_id = data.get("thread_id")
+            context = data.get(
+                "context", {}
+            )  # e.g., {patient_id: '...', care_plan_id: '...'}
+
+            if not thread_id:
+                if not context:
+                    # For backward compatibility, allow requests without context
+                    # In this case, we'll create/find a thread with no patient/care_plan context
+                    logger.debug(
+                        "[DEBUG] No thread_id or context provided, creating thread without context"
+                    )
+                thread_id = llm_chat_service.get_or_create_thread(
+                    user_id=UserID(current_user_id),
+                    assistant_id=assistant_id,
+                    context=context,
+                )
+            else:
+                # Validate that the thread exists and belongs to the user
+                thread = llm_chat_service.get_thread(thread_id)
+                if not thread:
+                    return jsonify({"error": "Thread not found"}), 404
+                if str(thread.user_id) != str(current_user_id):
+                    return jsonify({"error": "Unauthorized access to thread"}), 403
 
             # Check if OpenAI API key is provided in request (for programmatic access)
             openai_api_key = data.get("openai_api_key")
@@ -150,15 +163,17 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
 
                 logger.debug("[DEBUG] Using OpenAI API key from request body")
 
-            # Add user message to persistent chat
-            chat = llm_chat_service.add_message(
-                UserID(current_user_id), assistant_id, "Me", prompt
+            # Add user message to thread (atomic insert)
+            llm_chat_service.add_message(
+                thread_id=thread_id, role="user", content=prompt
             )
 
             response_format = data.get("response_format")  # type: ignore
 
-            # Use the persistent chat history as context
-            history: list[Dict[str, Any]] = chat.messages
+            # Retrieve thread history for LLM context
+            history: list[Dict[str, Any]] = llm_chat_service.get_thread_history(
+                thread_id
+            )
             logger.debug(f"History: {history}")
 
             agent_mcp_config = (
@@ -213,24 +228,30 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                     str(current_user_id), str(LLMModel.GPT_5_NANO)
                 )
 
-            # Add assistant response to persistent chat
+            # Add assistant response to thread (atomic insert)
             used_tools = response.get("used_tools", [])
-            chat = llm_chat_service.add_message(
-                UserID(current_user_id),
-                assistant_id,
-                "AI Assistant",
-                response.get("response", ""),
-                used_tools,
+            llm_chat_service.add_message(
+                thread_id=thread_id,
+                role="assistant",
+                content=response.get("response", ""),
+                used_tools=used_tools,
             )
 
-            # Save updated agent state to session (only for session-based auth)
-            # if hasattr(request, "session"): session["agent_data"] = agent.to_dict()
+            # Retrieve the updated thread to return to client
+            thread = llm_chat_service.get_thread(thread_id)
+            if not thread:
+                return jsonify({"error": "Failed to retrieve thread"}), 500
 
-            # Return chat data with tool usage information
-            chat_data = chat.to_dict()
-            chat_data["used_tools"] = response.get("used_tools", [])
+            # Get all messages for the thread to return complete conversation
+            messages = llm_chat_service.get_thread_history(thread_id)
 
-            return jsonify(chat_data), 200
+            # Return thread data with messages and tool usage information
+            response_data = thread.to_dict()
+            response_data["messages"] = messages
+            response_data["thread_id"] = thread_id
+            response_data["used_tools"] = used_tools
+
+            return jsonify(response_data), 200
         else:
             return jsonify({"error": "Method not allowed"}), 405
     except Exception as e:
