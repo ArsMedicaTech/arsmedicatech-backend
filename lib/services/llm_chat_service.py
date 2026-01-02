@@ -142,6 +142,73 @@ class LLMChatService:
                 return str(thread_id)
         raise ValueError("Failed to create thread")
 
+    def find_thread_by_context(
+        self,
+        user_id: UserID,
+        assistant_id: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional[LLMChatThread]:
+        """
+        Finds a thread matching the specific context without creating one.
+        Used for GET requests where we only want to retrieve existing threads.
+
+        :param user_id: UserID - The ID of the user.
+        :param assistant_id: str - The ID of the assistant.
+        :param context: Optional dict containing 'patient_id', 'care_plan_id', and/or 'draft_session_id'.
+        :return: Optional[LLMChatThread] - The thread if found, otherwise None.
+        """
+        context = context or {}
+        patient_id = context.get("patient_id")
+        care_plan_id = context.get("care_plan_id")
+        draft_session_id = context.get("draft_session_id")
+
+        # Build query to find existing thread (same logic as get_or_create_thread but no creation)
+        query_parts = [
+            "SELECT * FROM llm_chat_thread",
+            "WHERE user_id = $user_id",
+            "AND assistant_id = $assistant_id",
+        ]
+        params: Dict[str, Any] = {
+            "user_id": user_id,
+            "assistant_id": assistant_id,
+        }
+
+        # Build WHERE clauses based on context priority (same as get_or_create_thread)
+        if care_plan_id:
+            query_parts.append("AND care_plan_id = $care_plan_id")
+            params["care_plan_id"] = care_plan_id
+            if patient_id:
+                query_parts.append("AND patient_id = $patient_id")
+                params["patient_id"] = patient_id
+            else:
+                query_parts.append("AND patient_id IS NONE")
+        elif draft_session_id:
+            query_parts.append("AND draft_session_id = $draft_session_id")
+            params["draft_session_id"] = draft_session_id
+            if patient_id:
+                query_parts.append("AND patient_id = $patient_id")
+                params["patient_id"] = patient_id
+            else:
+                query_parts.append("AND patient_id IS NONE")
+            query_parts.append("AND care_plan_id IS NONE")
+        elif patient_id:
+            query_parts.append("AND patient_id = $patient_id")
+            params["patient_id"] = patient_id
+            query_parts.append("AND care_plan_id IS NONE")
+            query_parts.append("AND draft_session_id IS NONE")
+        else:
+            query_parts.append("AND patient_id IS NONE")
+            query_parts.append("AND care_plan_id IS NONE")
+            query_parts.append("AND draft_session_id IS NONE")
+
+        query_parts.append("LIMIT 1")
+        query = " ".join(query_parts)
+
+        result = self.db.query(query, params)
+        if result and isinstance(result, list) and len(result) > 0:
+            return LLMChatThread.from_dict(result[0])
+        return None
+
     def get_thread(self, thread_id: str) -> Optional[LLMChatThread]:
         """
         Get a specific thread by ID.
