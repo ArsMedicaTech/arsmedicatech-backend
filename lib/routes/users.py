@@ -903,3 +903,108 @@ def update_user_profile_route() -> Tuple[Response, int]:
     except Exception as e:
         logger.error(f"Error updating user profile: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
+
+def create_user_programmatically_route() -> Tuple[Response, int]:
+    """
+    Create a new user programmatically (super admin only)
+
+    This endpoint allows super admin users to create new user accounts programmatically.
+    It requires the ENCRYPTION_KEY to be passed in the X-Super-Admin-Key header.
+
+    Example request:
+    POST /api/admin/users/create
+    Headers:
+        X-Super-Admin-Key: <your-encryption-key-from-env>
+    Body:
+    {
+        "username": "newuser",
+        "email": "user@example.com",
+        "password": "SecurePassword123!",
+        "first_name": "John",
+        "last_name": "Doe",
+        "role": "patient"
+    }
+
+    Example response:
+    {
+        "success": true,
+        "message": "User created successfully",
+        "user": {
+            "id": "user:abc123",
+            "username": "newuser",
+            "email": "user@example.com",
+            ...
+        }
+    }
+
+    :return: Response object containing the creation result
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        # Extract required fields
+        username = data.get("username")
+        email = data.get("email")
+        password = data.get("password")
+        first_name = data.get("first_name")
+        last_name = data.get("last_name")
+        role = data.get("role", "patient")
+        is_federated = data.get("is_federated", False)
+        auth_provider = data.get("auth_provider", "local")
+        external_id = data.get("external_id")
+        external_data = data.get("external_data")
+
+        # Validate required fields
+        if not username:
+            return jsonify({"error": "Username is required"}), 400
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
+        if not password and not is_federated:
+            return (
+                jsonify({"error": "Password is required for non-federated users"}),
+                400,
+            )
+
+        logger.debug(f"Creating user programmatically: {username} ({email})")
+
+        user_service = UserService()
+        user_service.connect()
+        try:
+            result = user_service.create_user(
+                username=username,
+                email=email,
+                password=password or "",  # Empty string for federated users
+                first_name=first_name,
+                last_name=last_name,
+                role=role,
+                is_federated=is_federated,
+                auth_provider=auth_provider,
+                external_id=external_id,
+                external_data=external_data,
+            )
+
+            if result["success"]:
+                user = result["user"]
+                user_dict = user.to_dict() if user else {}
+                return (
+                    jsonify(
+                        {
+                            "success": True,
+                            "message": result["message"],
+                            "user": user_dict,
+                        }
+                    ),
+                    201,
+                )
+            else:
+                return jsonify({"error": result["message"]}), 400
+
+        finally:
+            user_service.close()
+
+    except Exception as e:
+        logger.error(f"Error creating user programmatically: {e}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500

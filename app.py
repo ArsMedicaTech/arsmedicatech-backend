@@ -109,6 +109,7 @@ from lib.routes.users import (
     activate_user_route,
     change_password_route,
     check_users_exist_route,
+    create_user_programmatically_route,
     deactivate_user_route,
     get_all_users_route,
     get_api_usage_route,
@@ -137,6 +138,7 @@ from lib.services.auth_decorators import (
     require_api_permission,
     require_auth,
     require_flexible_auth,
+    require_super_admin_key,
 )
 from lib.services.notifications import publish_event_with_buffer
 from lib.services.redis_client import get_redis_connection
@@ -467,6 +469,17 @@ def activate_user(user_id: str) -> Tuple[Response, int]:
     :return: Response object with activation status.
     """
     return activate_user_route(user_id)
+
+
+@app.route("/api/admin/users/create", methods=["POST"])
+@require_super_admin_key
+def create_user_programmatically() -> Tuple[Response, int]:
+    """
+    Create a new user programmatically (super admin only).
+    Requires X-Super-Admin-Key header with ENCRYPTION_KEY value.
+    :return: Response object with user creation status.
+    """
+    return create_user_programmatically_route()
 
 
 @app.route("/api/admin/setup", methods=["POST"])
