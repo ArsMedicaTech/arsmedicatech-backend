@@ -259,3 +259,77 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
     finally:
         llm_chat_service.close()
+
+
+def link_chat_thread_route(thread_id: str) -> Tuple[Response, int]:
+    """
+    Route for linking a chat thread to a care plan (Adoption Pattern).
+    Used when a draft thread needs to be associated with a newly created care plan.
+
+    :param thread_id: The thread ID to link (from URL parameter).
+    :return: Response object with success status or error message.
+    """
+    logger.debug(f"[DEBUG] /api/llm_chat/thread/{thread_id}/link called")
+
+    # Get current user from auth decorator (either session or API key)
+    current_user = get_current_user()
+    if not current_user:
+        logger.debug("[DEBUG] Not authenticated in link_chat_thread")
+        return jsonify({"error": "Not authenticated"}), 401
+
+    current_user_id = current_user.user_id
+    logger.debug(f"[DEBUG] User authenticated: {current_user_id}")
+
+    llm_chat_service = LLMChatService()
+    llm_chat_service.connect()
+    try:
+        # Security: Ensure current user owns this thread
+        thread = llm_chat_service.get_thread(thread_id)
+        if not thread:
+            return jsonify({"error": "Thread not found"}), 404
+
+        if str(thread.user_id) != str(current_user_id):
+            return jsonify({"error": "Unauthorized access to thread"}), 403
+
+        # Get the new context from request body
+        data: Optional[Dict[str, Any]] = request.json
+        if data is None:
+            return jsonify({"error": "Invalid JSON data"}), 400
+
+        # Build the update context
+        new_context_fields: Dict[str, Any] = {}
+
+        # Handle care_plan_id adoption
+        if "care_plan_id" in data:
+            care_plan_id = data.get("care_plan_id")
+            new_context_fields["care_plan_id"] = care_plan_id
+            # Clear draft_session_id when adopting to a real care plan
+            if care_plan_id is not None:
+                new_context_fields["draft_session_id"] = None
+
+        # Allow updating patient_id if needed
+        if "patient_id" in data:
+            new_context_fields["patient_id"] = data.get("patient_id")
+
+        if not new_context_fields:
+            return jsonify({"error": "No context fields provided for update"}), 400
+
+        # Update the thread context
+        updated_thread = llm_chat_service.update_thread_context(
+            thread_id, new_context_fields
+        )
+
+        if not updated_thread:
+            return jsonify({"error": "Failed to update thread context"}), 500
+
+        logger.debug(
+            f"Successfully linked thread {thread_id} with context: {new_context_fields}"
+        )
+
+        return jsonify({"status": "success", "thread": updated_thread.to_dict()}), 200
+
+    except Exception as e:
+        logger.error(f"Error in link_chat_thread: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        llm_chat_service.close()

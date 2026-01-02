@@ -51,17 +51,20 @@ class LLMChatService:
     ) -> str:
         """
         Finds a thread matching the specific context, or creates one.
+        Supports the "Adoption Pattern" for draft sessions.
 
         :param user_id: UserID - The ID of the user.
         :param assistant_id: str - The ID of the assistant.
-        :param context: Optional dict containing 'patient_id' and/or 'care_plan_id'.
+        :param context: Optional dict containing 'patient_id', 'care_plan_id', and/or 'draft_session_id'.
         :return: str - The thread ID (e.g., 'llm_chat_thread:zk98...').
         """
         context = context or {}
         patient_id = context.get("patient_id")
         care_plan_id = context.get("care_plan_id")
+        draft_session_id = context.get("draft_session_id")
 
         # Build query to find existing thread
+        # Priority: care_plan_id > draft_session_id > patient_id (general)
         query_parts = [
             "SELECT * FROM llm_chat_thread",
             "WHERE user_id = $user_id",
@@ -72,18 +75,40 @@ class LLMChatService:
             "assistant_id": assistant_id,
         }
 
-        # Add context filters if provided
-        if patient_id:
-            query_parts.append("AND patient_id = $patient_id")
-            params["patient_id"] = patient_id
-        else:
-            query_parts.append("AND patient_id IS NONE")
-
+        # Build WHERE clauses based on context priority
         if care_plan_id:
+            # If we have a care_plan_id, look for threads with that care_plan_id
             query_parts.append("AND care_plan_id = $care_plan_id")
             params["care_plan_id"] = care_plan_id
-        else:
+            # Also match patient_id if provided
+            if patient_id:
+                query_parts.append("AND patient_id = $patient_id")
+                params["patient_id"] = patient_id
+            else:
+                query_parts.append("AND patient_id IS NONE")
+        elif draft_session_id:
+            # If we have a draft_session_id (but no care_plan_id), look for that
+            query_parts.append("AND draft_session_id = $draft_session_id")
+            params["draft_session_id"] = draft_session_id
+            # Also match patient_id if provided
+            if patient_id:
+                query_parts.append("AND patient_id = $patient_id")
+                params["patient_id"] = patient_id
+            else:
+                query_parts.append("AND patient_id IS NONE")
+            # Ensure care_plan_id is NONE for draft sessions
             query_parts.append("AND care_plan_id IS NONE")
+        elif patient_id:
+            # Fallback: General patient chat (no care plan, no draft session)
+            query_parts.append("AND patient_id = $patient_id")
+            params["patient_id"] = patient_id
+            query_parts.append("AND care_plan_id IS NONE")
+            query_parts.append("AND draft_session_id IS NONE")
+        else:
+            # No context at all - general chat
+            query_parts.append("AND patient_id IS NONE")
+            query_parts.append("AND care_plan_id IS NONE")
+            query_parts.append("AND draft_session_id IS NONE")
 
         query_parts.append("LIMIT 1")
         query = " ".join(query_parts)
@@ -106,6 +131,7 @@ class LLMChatService:
             assistant_id=assistant_id,
             patient_id=patient_id,
             care_plan_id=care_plan_id,
+            draft_session_id=draft_session_id,
             title=context.get("title"),
             system_prompt_version=context.get("system_prompt_version"),
         )
@@ -134,6 +160,84 @@ class LLMChatService:
         if result and isinstance(result, list) and len(result) > 0:
             return LLMChatThread.from_dict(result[0])
         return None
+
+    def update_thread_context(
+        self, thread_id: str, new_context_fields: Dict[str, Any]
+    ) -> Optional[LLMChatThread]:
+        """
+        Updates the context of an existing thread.
+        Used to 'adopt' a draft thread into a real Care Plan (Adoption Pattern).
+
+        :param thread_id: str - The thread ID to update.
+        :param new_context_fields: Dict containing fields to update (e.g., {'care_plan_id': '...', 'draft_session_id': None}).
+        :return: Optional[LLMChatThread] - The updated thread if successful, otherwise None.
+        """
+        # Handle both full record format and just the ID
+        if ":" not in thread_id:
+            record_id = f"llm_chat_thread:{thread_id}"
+        else:
+            record_id = thread_id
+
+        # Build the MERGE object for SurrealDB
+        merge_fields: Dict[str, Any] = {}
+
+        if "care_plan_id" in new_context_fields:
+            care_plan_id = new_context_fields["care_plan_id"]
+            if care_plan_id is None:
+                # Use NONE to clear the field
+                merge_fields["care_plan_id"] = None
+            else:
+                merge_fields["care_plan_id"] = care_plan_id
+
+        if "draft_session_id" in new_context_fields:
+            draft_session_id = new_context_fields["draft_session_id"]
+            if draft_session_id is None:
+                # Use NONE to clear the field
+                merge_fields["draft_session_id"] = None
+            else:
+                merge_fields["draft_session_id"] = draft_session_id
+
+        if "patient_id" in new_context_fields:
+            patient_id = new_context_fields["patient_id"]
+            if patient_id is None:
+                merge_fields["patient_id"] = None
+            else:
+                merge_fields["patient_id"] = patient_id
+
+        if not merge_fields:
+            logger.warning("No fields to update in update_thread_context")
+            return self.get_thread(thread_id)
+
+        # Build the update query
+        # Handle None values by using NONE in the query, not as a parameter
+        update_parts = []
+        params: Dict[str, Any] = {}
+
+        for key, value in merge_fields.items():
+            if value is None:
+                # Use NONE directly in query for clearing fields
+                update_parts.append(f"{key} = NONE")
+            else:
+                # Use parameterized query for actual values
+                update_parts.append(f"{key} = ${key}")
+                params[key] = value
+
+        update_clause = ", ".join(update_parts)
+
+        # Add updated_at timestamp
+        update_clause += ", updated_at = time::now()"
+
+        query = f"UPDATE {record_id} SET {update_clause}"
+
+        try:
+            result = self.db.query(query, params)
+            logger.debug(f"Updated thread {thread_id} with fields: {merge_fields}")
+
+            # Return the updated thread
+            return self.get_thread(thread_id)
+        except Exception as e:
+            logger.error(f"Error updating thread context for {thread_id}: {e}")
+            return None
 
     def get_threads_for_user(
         self, user_id: UserID, assistant_id: Optional[str] = None

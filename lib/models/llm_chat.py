@@ -20,6 +20,7 @@ class LLMChatThread:
         assistant_id: str = "ai-assistant",
         patient_id: Optional[str] = None,
         care_plan_id: Optional[str] = None,
+        draft_session_id: Optional[str] = None,
         title: Optional[str] = None,
         system_prompt_version: Optional[str] = None,
         created_at: Optional[str] = None,
@@ -32,6 +33,7 @@ class LLMChatThread:
         :param assistant_id: ID of the assistant (default is "ai-assistant").
         :param patient_id: Optional patient ID associated with this thread.
         :param care_plan_id: Optional care plan ID associated with this thread.
+        :param draft_session_id: Optional temporary session ID for draft threads (used before care plan is created).
         :param title: Optional title for the thread.
         :param system_prompt_version: Optional system prompt version for AI agent configuration.
         :param created_at: Creation timestamp of the thread in ISO format. If not provided, the current time is used.
@@ -43,6 +45,7 @@ class LLMChatThread:
         self.assistant_id = assistant_id
         self.patient_id = patient_id
         self.care_plan_id = care_plan_id
+        self.draft_session_id = draft_session_id
         self.title = title
         self.system_prompt_version = system_prompt_version
         self.created_at = created_at or datetime.now(timezone.utc).isoformat()
@@ -64,6 +67,8 @@ class LLMChatThread:
             result["patient_id"] = self.patient_id
         if self.care_plan_id is not None:
             result["care_plan_id"] = self.care_plan_id
+        if self.draft_session_id is not None:
+            result["draft_session_id"] = self.draft_session_id
         if self.title is not None:
             result["title"] = self.title
         if self.system_prompt_version is not None:
@@ -88,6 +93,7 @@ class LLMChatThread:
             assistant_id=data.get("assistant_id", "ai-assistant"),
             patient_id=data.get("patient_id"),
             care_plan_id=data.get("care_plan_id"),
+            draft_session_id=data.get("draft_session_id"),
             title=data.get("title"),
             system_prompt_version=data.get("system_prompt_version"),
             created_at=data.get("created_at"),
@@ -107,6 +113,7 @@ class LLMChatThread:
             DEFINE FIELD assistant_id ON llm_chat_thread TYPE string;
             DEFINE FIELD patient_id ON llm_chat_thread TYPE option<record<patient>>;
             DEFINE FIELD care_plan_id ON llm_chat_thread TYPE option<string>;
+            DEFINE FIELD draft_session_id ON llm_chat_thread TYPE option<string>;
             DEFINE FIELD title ON llm_chat_thread TYPE option<string>;
             DEFINE FIELD system_prompt_version ON llm_chat_thread TYPE option<string>;
             DEFINE FIELD created_at ON llm_chat_thread TYPE datetime VALUE time::now() READONLY;

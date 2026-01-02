@@ -68,7 +68,7 @@ from lib.routes.chat import (
     send_message_route,
 )
 from lib.routes.education import get_education_content_route
-from lib.routes.llm_agent import llm_agent_endpoint_route
+from lib.routes.llm_agent import link_chat_thread_route, llm_agent_endpoint_route
 from lib.routes.loginradius_auth import (
     get_loginradius_config_route,
     loginradius_logout_route,
@@ -589,6 +589,18 @@ def llm_agent_endpoint() -> Tuple[Response, int]:
     :return: Response object with LLM agent data.
     """
     return llm_agent_endpoint_route()
+
+
+@app.route("/api/llm_chat/thread/<string:thread_id>/link", methods=["PATCH"])
+@require_flexible_auth
+def link_chat_thread(thread_id: str) -> Tuple[Response, int]:
+    """
+    Link a chat thread to a care plan (Adoption Pattern).
+    Used when a draft thread needs to be associated with a newly created care plan.
+    :param thread_id: The thread ID to link.
+    :return: Response object with success status or error message.
+    """
+    return link_chat_thread_route(thread_id)
 
 
 @app.route("/api/llm_chat/reset", methods=["POST"])
