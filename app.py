@@ -145,6 +145,7 @@ from settings import (
     APP_URL,
     CLIENT_ID,
     COGNITO_DOMAIN,
+    CORS_ORIGINS,
     DEBUG,
     FLASK_SECRET_KEY,
     HOST,
@@ -169,16 +170,7 @@ CORS(
     app,
     resources={
         r"/*": {
-            "origins": [
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:3012",
-                "http://127.0.0.1:3012",
-                "https://demo.arsmedicatech.com",
-                # Flutter:
-                "http://localhost:5001",
-                "http://127.0.0.1:5001",
-            ],
+            "origins": CORS_ORIGINS,
             "supports_credentials": True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
