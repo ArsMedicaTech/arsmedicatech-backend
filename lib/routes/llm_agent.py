@@ -100,12 +100,65 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
     llm_chat_service.connect()
     try:
         if request.method == "GET":
-            # Support both new thread-based and legacy chat retrieval
-            assistant_id = request.args.get("assistant_id")
-            threads = llm_chat_service.get_threads_for_user(
-                UserID(current_user_id), assistant_id
-            )
-            return jsonify([thread.to_dict() for thread in threads]), 200
+            # Check if we're requesting a specific thread by ID
+            thread_id = request.args.get("thread_id")
+
+            # Check if we're requesting by context (for draft sessions or care plans)
+            context = {}
+            if request.args.get("patient_id"):
+                context["patient_id"] = request.args.get("patient_id")
+            if request.args.get("care_plan_id"):
+                context["care_plan_id"] = request.args.get("care_plan_id")
+            if request.args.get("draft_session_id"):
+                context["draft_session_id"] = request.args.get("draft_session_id")
+
+            # If we have a thread_id or context, return that specific thread with messages
+            if thread_id or context:
+                assistant_id = request.args.get("assistant_id", "ai-assistant")
+
+                # Get or find the thread
+                if thread_id:
+                    thread = llm_chat_service.get_thread(thread_id)
+                    if not thread:
+                        return jsonify({"error": "Thread not found"}), 404
+                    # Security: Ensure current user owns this thread
+                    if str(thread.user_id) != str(current_user_id):
+                        return jsonify({"error": "Unauthorized access to thread"}), 403
+                else:
+                    # Find thread by context (don't create if it doesn't exist for GET requests)
+                    thread = llm_chat_service.find_thread_by_context(
+                        user_id=UserID(current_user_id),
+                        assistant_id=assistant_id,
+                        context=context,
+                    )
+                    if not thread:
+                        # Thread doesn't exist yet - return empty thread with no messages
+                        return (
+                            jsonify(
+                                {
+                                    "error": "Thread not found",
+                                    "message": "No thread exists for the given context yet. Send a message to create one.",
+                                }
+                            ),
+                            404,
+                        )
+                    thread_id = thread.id
+
+                # Get messages for the thread
+                messages = llm_chat_service.get_thread_history(thread_id or thread.id)
+
+                # Return thread with messages
+                response_data = thread.to_dict()
+                response_data["messages"] = messages
+                response_data["thread_id"] = thread_id or thread.id
+                return jsonify(response_data), 200
+            else:
+                # No specific thread requested - return list of all threads for user
+                assistant_id = request.args.get("assistant_id")
+                threads = llm_chat_service.get_threads_for_user(
+                    UserID(current_user_id), assistant_id
+                )
+                return jsonify([thread.to_dict() for thread in threads]), 200
         elif request.method == "POST":
             data: Optional[Dict[str, Any]] = request.json
             if data is None:
