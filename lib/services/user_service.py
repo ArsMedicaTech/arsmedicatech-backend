@@ -487,7 +487,7 @@ class UserService:
         # If not in memory, check database
         try:
             result = self.db.query(
-                "SELECT * FROM Session WHERE session_token = $session_token",
+                "SELECT * FROM user_session WHERE session_token = $session_token",
                 {"session_token": token},
             )
 
@@ -523,7 +523,7 @@ class UserService:
         # Remove from database
         try:
             result = self.db.query(
-                "SELECT * FROM Session WHERE session_token = $session_token",
+                "SELECT * FROM user_session WHERE session_token = $session_token",
                 {"session_token": token},
             )
 
