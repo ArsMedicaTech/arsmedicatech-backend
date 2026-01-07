@@ -3,6 +3,7 @@ Main application file for the Flask server.
 """
 
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -152,6 +153,11 @@ from settings import (
     FLASK_SECRET_KEY,
     FRONTEND_REDIRECT,
     HOST,
+    KEYCLOAK_AUTH_HOST,
+    KEYCLOAK_CLIENT_ID,
+    KEYCLOAK_CLIENT_SECRET,
+    KEYCLOAK_REALM,
+    KEYCLOAK_SERVER_METADATA_URL,
     PORT,
     REDIRECT_URI,
     SENTRY_DSN,
@@ -189,9 +195,11 @@ app.config["SESSION_TYPE"] = "filesystem"
 if DEBUG:
     app.config.update(
         SESSION_COOKIE_SECURE=False,  # False only on http://localhost
-        SESSION_COOKIE_SAMESITE="None",
+        # SESSION_COOKIE_SAMESITE="None",
+        SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_DOMAIN=None,  # No domain set for local development
     )
+    os.environ["AUTHLIB_INSECURE_TRANSPORT"] = "true"
 else:
     app.config.update(
         SESSION_COOKIE_SECURE=True,  # False only on http://localhost
@@ -410,6 +418,19 @@ def register() -> Tuple[Response, int]:
     :return: Response object with registration status.
     """
     return register_route()
+
+
+@app.route("/api/auth/register-page", methods=["GET"])
+def register_page():
+    """
+    Redirect to Keycloak's registration page for browser-based registration.
+    This is different from /api/auth/register which is for API-based registration.
+    """
+    redirect_uri = url_for("authorize", _external=True)
+
+    # Passing kc_action="register" tells Keycloak's authorize endpoint
+    # to jump directly to the registration form instead of the login form.
+    return oauth.keycloak.authorize_redirect(redirect_uri, kc_action="register")
 
 
 @app.route("/api/auth/login", methods=["POST"])

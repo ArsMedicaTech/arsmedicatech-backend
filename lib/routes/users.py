@@ -453,13 +453,31 @@ def register_route() -> Tuple[Response, int]:
 
     This endpoint allows new users to register by providing their username,
     email, password, and optional first name, last name, and role.
+    The user will be registered in Keycloak first, then created in SurrealDB.
+
     Example request:
-    POST /api/users/register
+    POST /api/auth/register
     Body:
-    {}
+    {
+        "username": "newuser",
+        "email": "user@example.com",
+        "password": "SecurePassword123!",
+        "first_name": "John",
+        "last_name": "Doe"
+    }
 
     Example response:
-    {}
+    {
+        "message": "User created successfully",
+        "user": {
+            "id": "user:abc123",
+            "username": "newuser",
+            "email": "user@example.com",
+            "first_name": "John",
+            "last_name": "Doe",
+            "userType": "provider"
+        }
+    }
 
     :return: Response object containing a JSON representation of the newly created user or an error message.
     """
@@ -474,7 +492,9 @@ def register_route() -> Tuple[Response, int]:
     password = data.get("password")
     first_name = data.get("first_name")
     last_name = data.get("last_name")
-    role = data.get("role", "patient")
+    # Default role is "provider" as per user's requirement
+    role = data.get("userType", "provider")
+
     logger.debug(
         f"[DEBUG] Registration fields - username: {username}, email: {email}, first_name: {first_name}, last_name: {last_name}, role: {role}"
     )
@@ -482,17 +502,43 @@ def register_route() -> Tuple[Response, int]:
     if not all([username, email, password]):
         return jsonify({"error": "Username, email, and password are required"}), 400
 
+    # Import KeycloakService here to avoid circular imports
+    from lib.services.keycloak_service import KeycloakService
+
+    # Step 1: Register user in Keycloak first
+    keycloak_service = KeycloakService()
+    logger.debug("Registering user in Keycloak...")
+    keycloak_success, keycloak_user_id, keycloak_error = keycloak_service.register_user(
+        username=username,
+        email=email,
+        password=password,
+        first_name=first_name,
+        last_name=last_name,
+        user_type=role,
+    )
+
+    if not keycloak_success:
+        logger.error(f"Failed to register user in Keycloak: {keycloak_error}")
+        return jsonify({"error": f"Registration failed: {keycloak_error}"}), 400
+
+    logger.debug(f"User registered in Keycloak with ID: {keycloak_user_id}")
+
+    # Step 2: Create user in SurrealDB with default values
     user_service = UserService()
     user_service.connect()
     try:
-        logger.debug("Calling user_service.create_user")
+        logger.debug("Creating user in SurrealDB...")
         create_user_result: CreateUserResult = user_service.create_user(
             username=username,
             email=email,
-            password=password,
+            password="",  # No password for Keycloak users; authentication is handled by Keycloak
             first_name=first_name,
             last_name=last_name,
             role=role,
+            is_federated=True,  # Mark as federated since auth is handled by Keycloak
+            auth_provider="keycloak",
+            external_id=keycloak_user_id,
+            external_data={"keycloak_user_id": keycloak_user_id},
         )
 
         logger.debug(
@@ -501,6 +547,8 @@ def register_route() -> Tuple[Response, int]:
         if create_user_result["success"]:
             if not create_user_result["user"]:
                 logger.error("User creation succeeded but returned user is None")
+                # If SurrealDB creation fails but Keycloak succeeded, we should clean up
+                # For now, just return an error (could implement cleanup later)
                 return jsonify({"error": "User creation failed"}), 500
 
             logger.debug(f"User created successfully: {create_user_result['user'].id}")
@@ -522,6 +570,8 @@ def register_route() -> Tuple[Response, int]:
             )
         else:
             logger.debug(f"User creation failed: {create_user_result['message']}")
+            # If SurrealDB creation fails but Keycloak succeeded, we should clean up
+            # For now, just return an error (could implement cleanup later)
             return jsonify({"error": create_user_result["message"]}), 400
     finally:
         user_service.close()

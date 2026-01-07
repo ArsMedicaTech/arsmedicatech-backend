@@ -11,7 +11,7 @@ from typing import Any, Dict, Literal, Optional
 from settings import logger
 
 UserRoles = Literal["patient", "provider", "admin"]
-AuthProvider = Literal["local", "cognito", "loginradius"]
+AuthProvider = Literal["local", "cognito", "loginradius", "keycloak"]
 
 
 class User:
@@ -64,7 +64,7 @@ class User:
         :param user_organizations: Current number of organizations created by this user (default: 0)
         :param organization_id: ID of the organization this user belongs to (if applicable)
         :param is_federated: Whether the user is a federated user (e.g., created via Google sign-in)
-        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param auth_provider: Authentication provider (local, cognito, loginradius, keycloak)
         :param external_id: External user ID from OAuth provider
         :param external_data: Additional data from OAuth provider
         """
@@ -399,7 +399,7 @@ class User:
             DEFINE FIELD user_organizations ON user TYPE int DEFAULT 0;
             DEFINE FIELD organization_id ON user TYPE record<organization>;
             DEFINE FIELD is_federated ON user TYPE bool DEFAULT false;
-            DEFINE FIELD auth_provider ON user TYPE "local" | "cognito" | "loginradius" DEFAULT "local";
+            DEFINE FIELD auth_provider ON user TYPE "local" | "cognito" | "loginradius" | "keycloak" DEFAULT "local";
             DEFINE FIELD external_id ON user TYPE string;
             DEFINE FIELD external_data ON user TYPE object DEFAULT {};
             DEFINE FIELD created_at ON user TYPE datetime VALUE time::now() READONLY;

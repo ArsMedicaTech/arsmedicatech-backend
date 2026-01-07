@@ -169,7 +169,7 @@ class UserService:
         last_name: Optional[str] = None,
         role: str = "patient",
         is_federated: bool = False,
-        auth_provider: Literal["local", "cognito", "loginradius"] = "local",
+        auth_provider: Literal["local", "cognito", "loginradius", "keycloak"] = "local",
         external_id: Optional[str] = None,
         external_data: Optional[Dict[str, Any]] = None,
     ) -> CreateUserResult:
@@ -183,7 +183,7 @@ class UserService:
         :param last_name: Last name of the user (optional)
         :param role: Role of the user (default is "patient")
         :param is_federated: Whether the user is created via federated login (default is False)
-        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param auth_provider: Authentication provider (local, cognito, loginradius, keycloak)
         :param external_id: External user ID from OAuth provider
         :param external_data: Additional data from OAuth provider
 
