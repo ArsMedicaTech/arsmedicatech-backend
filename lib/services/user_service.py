@@ -193,6 +193,8 @@ class UserService:
             # Validate input
             valid, msg = User.validate_username(username)
             if not valid:
+                logger.debug(f"Failed to validate username:{msg}")
+                # Failed to validate username:Username can only contain letters, numbers, and underscores
                 return CreateUserResult(success=False, message=msg, user=None)
 
             # For OAuth users, we might have generated a fallback email
@@ -200,16 +202,19 @@ class UserService:
             if not (is_federated and email.endswith("@loginradius.local")):
                 valid, msg = User.validate_email(email)
                 if not valid:
+                    logger.debug(f"Failed to validate email:{msg}")
                     return CreateUserResult(success=False, message=msg, user=None)
 
             if not is_federated:
                 valid, msg = User.validate_password(password)
                 if not valid:
+                    logger.debug(f"Failed to validate password:{msg}")
                     return CreateUserResult(success=False, message=msg, user=None)
 
             # Check if username already exists
             existing_user = self.get_user_by_username(username)
             if existing_user:
+                logger.debug("Username already exists")
                 return CreateUserResult(
                     success=False, message="Username already exists", user=None
                 )
@@ -217,6 +222,7 @@ class UserService:
             # Check if email already exists
             existing_user = self.get_user_by_email(email)
             if existing_user:
+                logger.debug("Email already exists")
                 return CreateUserResult(
                     success=False, message="Email already exists", user=None
                 )
