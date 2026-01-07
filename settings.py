@@ -171,3 +171,6 @@ KEYCLOAK_SERVER_METADATA_URL = os.environ.get("KEYCLOAK_SERVER_METADATA_URL", ""
 
 KEYCLOAK_AUTH_HOST = os.environ.get("KEYCLOAK_AUTH_HOST", "auth.arsmedicatech.com")
 KEYCLOAK_REALM = os.environ.get("KEYCLOAK_REALM", "arsmedicatech")
+KEYCLOAK_BASE_URL = os.environ.get("KEYCLOAK_BASE_URL", f"https://{KEYCLOAK_AUTH_HOST}")
+
+FRONTEND_REDIRECT = os.environ.get("FRONTEND_REDIRECT", "http://localhost:3000")

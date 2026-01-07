@@ -150,6 +150,7 @@ from settings import (
     CORS_ORIGINS,
     DEBUG,
     FLASK_SECRET_KEY,
+    FRONTEND_REDIRECT,
     HOST,
     PORT,
     REDIRECT_URI,
@@ -428,7 +429,7 @@ def authorize():
     user_info = token.get("userinfo")
     if user_info:
         session["user"] = user_info
-    return redirect("/")
+    return redirect(FRONTEND_REDIRECT)
 
 
 @app.route("/api/auth/logout", methods=["POST"])
