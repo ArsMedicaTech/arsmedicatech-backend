@@ -445,12 +445,139 @@ def login() -> Tuple[Response, int]:
 
 @app.route("/api/auth/authorize")
 def authorize():
-    # This handles the callback and verifies the JWT signature
-    token = oauth.keycloak.authorize_access_token()
-    user_info = token.get("userinfo")
-    if user_info:
-        session["user"] = user_info
-    return redirect(FRONTEND_REDIRECT)
+    """
+    Handle Keycloak OAuth callback and create/update user in SurrealDB.
+    This is called after a user authenticates or registers via Keycloak.
+    """
+    try:
+        # This handles the callback and verifies the JWT signature
+        token = oauth.keycloak.authorize_access_token()
+        user_info = token.get("userinfo")
+
+        if not user_info:
+            logger.error("No user info in Keycloak token")
+            return redirect(f"{FRONTEND_REDIRECT}?error=no_user_info")
+
+        # Extract user information from Keycloak
+        keycloak_user_id = user_info.get("sub")
+        email = user_info.get("email")
+        username = user_info.get("preferred_username") or user_info.get("username")
+        first_name = user_info.get("given_name") or user_info.get("first_name")
+        last_name = user_info.get("family_name") or user_info.get("last_name")
+
+        # Get user type from Keycloak attributes (if available)
+        attributes = user_info.get("attributes", {})
+        user_type = None
+        if isinstance(attributes, dict):
+            user_type_list = attributes.get("userType", [])
+            if user_type_list:
+                user_type = (
+                    user_type_list[0]
+                    if isinstance(user_type_list, list)
+                    else user_type_list
+                )
+
+        # Default role is "provider" as per requirements
+        role = (
+            user_type if user_type in ["patient", "provider", "admin"] else "provider"
+        )
+
+        if not keycloak_user_id or not email:
+            logger.error(f"Missing required user info from Keycloak: {user_info}")
+            return redirect(f"{FRONTEND_REDIRECT}?error=missing_user_info")
+
+        # Check if user exists in SurrealDB
+        user_service = UserService()
+        user_service.connect()
+        try:
+            # First check by external_id (Keycloak user ID)
+            existing_user = None
+            if keycloak_user_id:
+                existing_user = user_service.get_user_by_external_id(
+                    keycloak_user_id, "keycloak"
+                )
+
+            # If not found by external_id, check by email
+            if not existing_user and email:
+                existing_user = user_service.get_user_by_email(email)
+
+            if existing_user:
+                # User exists - update if needed
+                logger.debug(f"Existing Keycloak user found: {existing_user.id}")
+                # Update external_id if it wasn't set before
+                if (
+                    not existing_user.external_id
+                    or existing_user.auth_provider != "keycloak"
+                ):
+                    existing_user.external_id = keycloak_user_id
+                    existing_user.auth_provider = "keycloak"
+                    existing_user.is_federated = True
+                    user_service.update_user(
+                        str(existing_user.id), existing_user.to_dict()
+                    )
+            else:
+                # User doesn't exist - create in SurrealDB
+                logger.debug(f"Creating new Keycloak user in SurrealDB: {email}")
+
+                # Use username if available, otherwise use email
+                if not username:
+                    username = (
+                        email.split("@")[0] if email else f"user_{keycloak_user_id[:8]}"
+                    )
+
+                # Ensure username is unique - if it exists, append a suffix
+                base_username = username
+                counter = 1
+                while user_service.get_user_by_username(username):
+                    username = f"{base_username}{counter}"
+                    counter += 1
+                    if counter > 1000:  # Safety limit
+                        username = f"user_{keycloak_user_id[:8]}"
+                        break
+
+                create_user_result = user_service.create_user(
+                    username=username,
+                    email=email,
+                    password="",  # No password for Keycloak users
+                    first_name=first_name,
+                    last_name=last_name,
+                    role=role,
+                    is_federated=True,
+                    auth_provider="keycloak",
+                    external_id=keycloak_user_id,
+                    external_data={
+                        "keycloak_user_id": keycloak_user_id,
+                        "userinfo": user_info,
+                    },
+                )
+
+                if not create_user_result["success"] or not create_user_result["user"]:
+                    logger.error(
+                        f"Failed to create Keycloak user in SurrealDB: {create_user_result['message']}"
+                    )
+                    return redirect(
+                        f"{FRONTEND_REDIRECT}?error=user_creation_failed&message={create_user_result['message']}"
+                    )
+
+                existing_user = create_user_result["user"]
+                logger.info(
+                    f"Created new Keycloak user in SurrealDB: {existing_user.id}"
+                )
+
+            # Store user info in session
+            session["user"] = user_info
+            session["user_id"] = existing_user.id
+            session["username"] = existing_user.username
+            session["role"] = existing_user.role
+
+        finally:
+            user_service.close()
+
+        return redirect(FRONTEND_REDIRECT)
+
+    except Exception as e:
+        logger.error(f"Error in Keycloak authorize callback: {e}", exc_info=True)
+        return redirect(f"{FRONTEND_REDIRECT}?error=auth_error&message={str(e)}")
 
 
 @app.route("/api/auth/logout", methods=["POST"])
