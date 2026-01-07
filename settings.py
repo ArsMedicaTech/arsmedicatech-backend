@@ -163,3 +163,11 @@ if AGENT_VERSION == "v2":
 
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*").split(",")
 print("CORS_ORIGINS:", CORS_ORIGINS)
+
+
+KEYCLOAK_CLIENT_ID = os.environ.get("KEYCLOAK_CLIENT_ID", "")
+KEYCLOAK_CLIENT_SECRET = os.environ.get("KEYCLOAK_CLIENT_SECRET", "")
+KEYCLOAK_SERVER_METADATA_URL = os.environ.get("KEYCLOAK_SERVER_METADATA_URL", "")
+
+KEYCLOAK_AUTH_HOST = os.environ.get("KEYCLOAK_AUTH_HOST", "auth.arsmedicatech.com")
+KEYCLOAK_REALM = os.environ.get("KEYCLOAK_REALM", "arsmedicatech")

@@ -18,6 +18,7 @@ from amt_nano.services.lab_results import (
     hematology,
     serum_proteins,
 )
+from authlib.integrations.flask_client import OAuth
 from flask import (
     Blueprint,
     Flask,
@@ -28,6 +29,7 @@ from flask import (
     request,
     send_from_directory,
     session,
+    url_for,
 )
 from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
@@ -115,8 +117,6 @@ from lib.routes.users import (
     get_api_usage_route,
     get_current_user_info_route,
     get_user_profile_route,
-    login_route,
-    logout_route,
     register_route,
     search_users_route,
     settings_route,
@@ -197,6 +197,18 @@ else:
         SESSION_COOKIE_SAMESITE="None",  # 'Lax' if SPA and API are same origin
         SESSION_COOKIE_DOMAIN=".arsmedicatech.com",  # leading dot, covers sub-domains
     )
+
+
+oauth = OAuth(app)
+
+oauth.register(
+    name="keycloak",
+    client_id=KEYCLOAK_CLIENT_ID,
+    client_secret=KEYCLOAK_CLIENT_SECRET,
+    # The magic URL that tells Flask all the Keycloak endpoints
+    server_metadata_url=KEYCLOAK_SERVER_METADATA_URL,
+    client_kwargs={"scope": "openid profile email"},
+)
 
 
 @app.route("/api/debug/session_v2")
@@ -405,7 +417,18 @@ def login() -> Tuple[Response, int]:
     Login endpoint for users.
     :return: Response object with login status.
     """
-    return login_route()
+    redirect_uri = url_for("authorize", _external=True)
+    return oauth.keycloak.authorize_redirect(redirect_uri)
+
+
+@app.route("/api/auth/authorize")
+def authorize():
+    # This handles the callback and verifies the JWT signature
+    token = oauth.keycloak.authorize_access_token()
+    user_info = token.get("userinfo")
+    if user_info:
+        session["user"] = user_info
+    return redirect("/")
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -415,7 +438,11 @@ def logout() -> Tuple[Response, int]:
     Logout endpoint for users.
     :return: Response object with logout status.
     """
-    return logout_route()
+    session.pop("user", None)
+    return redirect(
+        f"https://{KEYCLOAK_AUTH_HOST}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/logout"
+        f"?post_logout_redirect_uri={url_for('index', _external=True)}"
+    )
 
 
 @app.route("/api/auth/me", methods=["GET"])
