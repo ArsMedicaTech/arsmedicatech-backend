@@ -314,15 +314,28 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
         llm_chat_service.close()
 
 
-def link_chat_thread_route(thread_id: str) -> Tuple[Response, int]:
+def link_chat_thread_route() -> Tuple[Response, int]:
     """
     Route for linking a chat thread to a care plan (Adoption Pattern).
     Used when a draft thread needs to be associated with a newly created care plan.
 
-    :param thread_id: The thread ID to link (from URL parameter).
+    :param thread_id: The thread ID to link (from JSON body).
+    :param care_plan_id: The care plan ID to link to (from JSON body).
     :return: Response object with success status or error message.
     """
-    logger.debug(f"[DEBUG] /api/llm_chat/thread/{thread_id}/link called")
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    thread_id = data.get("thread_id")
+    care_plan_id = data.get("care_plan_id")
+
+    logger.debug(
+        f"[DEBUG] /api/llm_chat/link_thread called (thread_id={thread_id}, care_plan_id={care_plan_id})"
+    )
+
+    if not thread_id or not care_plan_id:
+        return jsonify({"error": "Missing thread_id or care_plan_id"}), 400
 
     # Get current user from auth decorator (either session or API key)
     current_user = get_current_user()
