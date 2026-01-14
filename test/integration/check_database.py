@@ -50,7 +50,7 @@ def check_database():
         print("\n4. Checking Session table...")
         try:
             # Try to get all records from Session table
-            result = user_service.db.select_many("Session")
+            result = user_service.db.select_many("user_session")
             print(f"Raw Session table contents: {result}")
         except Exception as e:
             print(f"Error getting Session table: {e}")

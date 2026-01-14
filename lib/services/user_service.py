@@ -150,7 +150,7 @@ class UserService:
 
         session_data = user_session.to_dict()
         session_id = str(uuid.uuid4()).replace("-", "")
-        record_id = f"Session:{session_id}"
+        record_id = f"user_session:{session_id}"
 
         self.db.query(
             f"CREATE {record_id} SET user_id = $user_id, username = $username, role = $role, "
@@ -169,7 +169,7 @@ class UserService:
         last_name: Optional[str] = None,
         role: str = "patient",
         is_federated: bool = False,
-        auth_provider: Literal["local", "cognito", "loginradius"] = "local",
+        auth_provider: Literal["local", "cognito", "loginradius", "keycloak"] = "local",
         external_id: Optional[str] = None,
         external_data: Optional[Dict[str, Any]] = None,
     ) -> CreateUserResult:
@@ -183,7 +183,7 @@ class UserService:
         :param last_name: Last name of the user (optional)
         :param role: Role of the user (default is "patient")
         :param is_federated: Whether the user is created via federated login (default is False)
-        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param auth_provider: Authentication provider (local, cognito, loginradius, keycloak)
         :param external_id: External user ID from OAuth provider
         :param external_data: Additional data from OAuth provider
 
@@ -193,6 +193,8 @@ class UserService:
             # Validate input
             valid, msg = User.validate_username(username)
             if not valid:
+                logger.debug(f"Failed to validate username:{msg}")
+                # Failed to validate username:Username can only contain letters, numbers, and underscores
                 return CreateUserResult(success=False, message=msg, user=None)
 
             # For OAuth users, we might have generated a fallback email
@@ -200,16 +202,19 @@ class UserService:
             if not (is_federated and email.endswith("@loginradius.local")):
                 valid, msg = User.validate_email(email)
                 if not valid:
+                    logger.debug(f"Failed to validate email:{msg}")
                     return CreateUserResult(success=False, message=msg, user=None)
 
             if not is_federated:
                 valid, msg = User.validate_password(password)
                 if not valid:
+                    logger.debug(f"Failed to validate password:{msg}")
                     return CreateUserResult(success=False, message=msg, user=None)
 
             # Check if username already exists
             existing_user = self.get_user_by_username(username)
             if existing_user:
+                logger.debug("Username already exists")
                 return CreateUserResult(
                     success=False, message="Username already exists", user=None
                 )
@@ -217,6 +222,7 @@ class UserService:
             # Check if email already exists
             existing_user = self.get_user_by_email(email)
             if existing_user:
+                logger.debug("Email already exists")
                 return CreateUserResult(
                     success=False, message="Email already exists", user=None
                 )
@@ -233,6 +239,7 @@ class UserService:
                 auth_provider=auth_provider,
                 external_id=external_id,
                 external_data=external_data,
+                is_first_time=True,
             )
 
             # Save to database
@@ -487,7 +494,7 @@ class UserService:
         # If not in memory, check database
         try:
             result = self.db.query(
-                "SELECT * FROM Session WHERE session_token = $session_token",
+                "SELECT * FROM user_session WHERE session_token = $session_token",
                 {"session_token": token},
             )
 
@@ -499,7 +506,7 @@ class UserService:
 
                 if session.is_expired():
                     # Remove expired session from database
-                    self.db.delete(f"Session:{session_data.get('id')}")
+                    self.db.delete(f"user_session:{session_data.get('id')}")
                     return None
 
                 # Add to memory cache
@@ -523,13 +530,13 @@ class UserService:
         # Remove from database
         try:
             result = self.db.query(
-                "SELECT * FROM Session WHERE session_token = $session_token",
+                "SELECT * FROM user_session WHERE session_token = $session_token",
                 {"session_token": token},
             )
 
             if result and len(result) > 0:
                 session_data = result[0]
-                self.db.delete(f"Session:{session_data.get('id')}")
+                self.db.delete(f"user_session:{session_data.get('id')}")
                 return True
         except Exception as e:
             logger.debug(f"Error removing session from database: {e}")
@@ -543,7 +550,7 @@ class UserService:
         """
         try:
             logger.debug("Getting all users from database...")
-            results = self.db.select_many("User")
+            results = self.db.select_many("user")
             logger.debug(f"Raw results: {results}")
             users: List[User] = []
             for user_data in results:

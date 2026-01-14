@@ -27,6 +27,42 @@ from lib.llm.mcp_tools import fetch_mcp_tool_defs
 from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
 from settings import logger
 
+
+def merge_mcp_configs(
+    server_config: Dict[str, Any], client_config: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Merge client-side MCP config with server-side config.
+    Client config takes precedence for conflicts, allowing users to override
+    or extend server-defined MCP servers.
+
+    :param server_config: Base server-side MCP configuration
+    :param client_config: Optional client-side MCP configuration to merge
+    :return: Merged MCP configuration
+    """
+    if not client_config:
+        return server_config.copy()
+
+    # Start with a deep copy of server config
+    merged = json.loads(json.dumps(server_config))
+
+    # Ensure mcpServers exists in merged config
+    if "mcpServers" not in merged:
+        merged["mcpServers"] = {}
+
+    # Merge client config's mcpServers into server config
+    if "mcpServers" in client_config:
+        # Client servers override or add to server servers
+        merged["mcpServers"].update(client_config["mcpServers"])
+
+    # Merge any other top-level keys from client config
+    for key, value in client_config.items():
+        if key != "mcpServers":
+            merged[key] = value
+
+    return merged
+
+
 DEFAULT_SYSTEM_PROMPT = """
 You are a clinical assistant that helps healthcare providers with patient care tasks.
 You can answer questions, provide information, and assist with various healthcare-related tasks.
@@ -365,13 +401,24 @@ class LLMAgent:
         mcp_config: Dict[str, Any],  # Accepts the config dictionary
         api_key: str,
         model: Optional[LLMModel] = None,
+        client_mcp_config: Optional[Dict[str, Any]] = None,
         **kwargs: Dict[str, Any],
     ) -> "LLMAgent":
         """
         Builds an LLMAgent with a hierarchical set of tools from a multi-server MCP config.
+
+        :param mcp_config: Base server-side MCP configuration
+        :param api_key: API key for accessing the LLM service
+        :param model: LLMModel enum value representing the model to use
+        :param client_mcp_config: Optional client-side MCP configuration to merge with server config
+        :param kwargs: Additional parameters for the agent
+        :return: An instance of LLMAgent with tools from merged MCP configuration
         """
+        # Merge client config with server config if provided
+        merged_config = merge_mcp_configs(mcp_config, client_mcp_config)
+
         # 1) Instantiate and connect the HierarchicalAgentManager
-        agent_manager = HierarchicalAgentManager(mcp_config)
+        agent_manager = HierarchicalAgentManager(merged_config)
 
         # 2) Instantiate the LLMAgent as before
         model_str = model.value if model else LLMModel.GPT_5_NANO.value

@@ -11,7 +11,7 @@ from typing import Any, Dict, Literal, Optional
 from settings import logger
 
 UserRoles = Literal["patient", "provider", "admin"]
-AuthProvider = Literal["local", "cognito", "loginradius"]
+AuthProvider = Literal["local", "cognito", "loginradius", "keycloak"]
 
 
 class User:
@@ -42,6 +42,7 @@ class User:
         auth_provider: AuthProvider = "local",
         external_id: Optional[str] = None,
         external_data: Optional[Dict[str, Any]] = None,
+        is_first_time: Optional[bool] = False,
     ) -> None:
         """
         Initialize a User object
@@ -64,9 +65,10 @@ class User:
         :param user_organizations: Current number of organizations created by this user (default: 0)
         :param organization_id: ID of the organization this user belongs to (if applicable)
         :param is_federated: Whether the user is a federated user (e.g., created via Google sign-in)
-        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param auth_provider: Authentication provider (local, cognito, loginradius, keycloak)
         :param external_id: External user ID from OAuth provider
         :param external_data: Additional data from OAuth provider
+        :param is_first_time: Indicates if it's the user's first time logging in
         """
         self.id = id
         self.username = username
@@ -88,6 +90,7 @@ class User:
         self.auth_provider = auth_provider
         self.external_id = external_id
         self.external_data = external_data or {}
+        self.is_first_time = is_first_time
 
         # Hash password if provided
         self.password_hash: Optional[str] = None
@@ -122,6 +125,7 @@ class User:
             "auth_provider": self.auth_provider,
             "external_id": self.external_id,
             "external_data": self.external_data,
+            "is_first_time": self.is_first_time,
         }
 
         # Only include id if it's not None (let SurrealDB generate it for new records)
@@ -399,7 +403,7 @@ class User:
             DEFINE FIELD user_organizations ON user TYPE int DEFAULT 0;
             DEFINE FIELD organization_id ON user TYPE record<organization>;
             DEFINE FIELD is_federated ON user TYPE bool DEFAULT false;
-            DEFINE FIELD auth_provider ON user TYPE "local" | "cognito" | "loginradius" DEFAULT "local";
+            DEFINE FIELD auth_provider ON user TYPE "local" | "cognito" | "loginradius" | "keycloak" DEFAULT "local";
             DEFINE FIELD external_id ON user TYPE string;
             DEFINE FIELD external_data ON user TYPE object DEFAULT {};
             DEFINE FIELD created_at ON user TYPE datetime VALUE time::now() READONLY;

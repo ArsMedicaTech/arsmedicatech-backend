@@ -34,7 +34,7 @@ def init_database():
 
         try:
             # Try to get all records from Session table
-            sessions = user_service.db.select_many("Session")
+            sessions = user_service.db.select_many("user_session")
             print(
                 f"Session table exists - found {len(sessions) if sessions else 0} sessions"
             )

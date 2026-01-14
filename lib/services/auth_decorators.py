@@ -570,3 +570,34 @@ def get_current_api_key_permissions() -> List[str]:
     :return: List of permissions for current API key
     """
     return getattr(g, "api_key_permissions", [])
+
+
+def require_super_admin_key(f: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    Decorator to require super admin key for a route (for super admin operations)
+
+    This decorator checks for a super admin key in the 'X-Super-Admin-Key' header
+    and validates it against the ENCRYPTION_KEY from settings.
+    This is intended for super admin operations like programmatic user creation.
+
+    :param f: The function to decorate (Flask route handler).
+    :return: The decorated function that checks for super admin key.
+    """
+
+    @wraps(f)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        from settings import ENCRYPTION_KEY
+
+        admin_key = request.headers.get("X-Super-Admin-Key")
+        if not admin_key:
+            logger.debug("No super admin key found in X-Super-Admin-Key header")
+            return jsonify({"error": "Super admin key required"}), 401
+
+        if admin_key != ENCRYPTION_KEY:
+            logger.debug("Invalid super admin key provided")
+            return jsonify({"error": "Invalid super admin key"}), 401
+
+        logger.debug("Super admin key validated successfully")
+        return f(*args, **kwargs)
+
+    return cast(Callable[..., Any], decorated_function)

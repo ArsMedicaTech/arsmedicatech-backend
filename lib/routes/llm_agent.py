@@ -8,7 +8,13 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from flask import Response, jsonify, request
 
 from lib.data_types import UserID
-from lib.llm.agent import DEFAULT_SYSTEM_PROMPT, LLMAgent, LLMModel, ToolDefinition
+from lib.llm.agent import (
+    DEFAULT_SYSTEM_PROMPT,
+    LLMAgent,
+    LLMModel,
+    ToolDefinition,
+    merge_mcp_configs,
+)
 from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
 from lib.services.auth_decorators import get_current_user
 from lib.services.llm_chat_service import LLMChatService
@@ -22,12 +28,24 @@ async def _get_agent_response(
     prompt: str,
     history: List[Dict[str, Any]],
     response_format: Any,
+    client_mcp_config: Optional[Dict[str, Any]] = None,
     **kwargs: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     Handles the entire async workflow for getting a response from the LLM agent.
+
+    :param mcp_conf: Base server-side MCP configuration
+    :param api_key: API key for accessing the LLM service
+    :param prompt: User prompt to send to the LLM
+    :param history: Conversation history
+    :param response_format: Format for the LLM's response
+    :param client_mcp_config: Optional client-side MCP configuration to merge with server config
+    :param kwargs: Additional parameters
+    :return: Dict containing the LLM's response and tool usage information
     """
-    manager = HierarchicalAgentManager(mcp_conf)
+    # Merge client config with server config if provided
+    merged_config = merge_mcp_configs(mcp_conf, client_mcp_config)
+    manager = HierarchicalAgentManager(merged_config)
 
     async with manager:
         system_prompt_val = kwargs.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
@@ -38,7 +56,6 @@ async def _get_agent_response(
         )
 
         agent = LLMAgent(
-            mcp_config=dict(cast(Dict[str, Any], mcp_config)),
             api_key=api_key,
             model=LLMModel.GPT_5_NANO,
             system_prompt=system_prompt,
@@ -49,26 +66,9 @@ async def _get_agent_response(
         agent.tool_func_dict = manager.func_lookup
 
         # 4) Set the conversation history from the database
-        # Convert LLMChat message format to LLMAgent format
-        converted_history = []
-        for msg in history:
-            if isinstance(msg, dict):
-                # Convert sender to role and text to content
-                role = msg.get("sender")
-                content = msg.get("text", "")
-
-                # Map sender values to expected role values
-                if role == "Me":
-                    role = "user"
-                elif role == "AI Assistant":
-                    role = "assistant"
-                elif role is None:
-                    # Skip messages with None sender
-                    continue
-
-                converted_history.append({"role": role, "content": content})
-
-        agent.message_history = converted_history
+        # History is already in the correct format from get_thread_history
+        # (list of dicts with 'role' and 'content' keys)
+        agent.message_history = history
 
         # 3. Get the completion from the agent
         response = await agent.complete(
@@ -100,8 +100,65 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
     llm_chat_service.connect()
     try:
         if request.method == "GET":
-            chats = llm_chat_service.get_llm_chats_for_user(UserID(current_user_id))
-            return jsonify([chat.to_dict() for chat in chats]), 200
+            # Check if we're requesting a specific thread by ID
+            thread_id = request.args.get("thread_id")
+
+            # Check if we're requesting by context (for draft sessions or care plans)
+            context = {}
+            if request.args.get("patient_id"):
+                context["patient_id"] = request.args.get("patient_id")
+            if request.args.get("care_plan_id"):
+                context["care_plan_id"] = request.args.get("care_plan_id")
+            if request.args.get("draft_session_id"):
+                context["draft_session_id"] = request.args.get("draft_session_id")
+
+            # If we have a thread_id or context, return that specific thread with messages
+            if thread_id or context:
+                assistant_id = request.args.get("assistant_id", "ai-assistant")
+
+                # Get or find the thread
+                if thread_id:
+                    thread = llm_chat_service.get_thread(thread_id)
+                    if not thread:
+                        return jsonify({"error": "Thread not found"}), 404
+                    # Security: Ensure current user owns this thread
+                    if str(thread.user_id) != str(current_user_id):
+                        return jsonify({"error": "Unauthorized access to thread"}), 403
+                else:
+                    # Find thread by context (don't create if it doesn't exist for GET requests)
+                    thread = llm_chat_service.find_thread_by_context(
+                        user_id=UserID(current_user_id),
+                        assistant_id=assistant_id,
+                        context=context,
+                    )
+                    if not thread:
+                        # Thread doesn't exist yet - return empty thread with no messages
+                        return (
+                            jsonify(
+                                {
+                                    "error": "Thread not found",
+                                    "message": "No thread exists for the given context yet. Send a message to create one.",
+                                }
+                            ),
+                            404,
+                        )
+                    thread_id = thread.id
+
+                # Get messages for the thread
+                messages = llm_chat_service.get_thread_history(thread_id or thread.id)
+
+                # Return thread with messages
+                response_data = thread.to_dict()
+                response_data["messages"] = messages
+                response_data["thread_id"] = thread_id or thread.id
+                return jsonify(response_data), 200
+            else:
+                # No specific thread requested - return list of all threads for user
+                assistant_id = request.args.get("assistant_id")
+                threads = llm_chat_service.get_threads_for_user(
+                    UserID(current_user_id), assistant_id
+                )
+                return jsonify([thread.to_dict() for thread in threads]), 200
         elif request.method == "POST":
             data: Optional[Dict[str, Any]] = request.json
             if data is None:
@@ -111,6 +168,32 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             prompt = data.get("prompt")
             if not prompt:
                 return jsonify({"error": "No prompt provided"}), 400
+
+            # Determine thread ID: either provided directly or find/create based on context
+            thread_id = data.get("thread_id")
+            context = data.get(
+                "context", {}
+            )  # e.g., {patient_id: '...', care_plan_id: '...'}
+
+            if not thread_id:
+                if not context:
+                    # For backward compatibility, allow requests without context
+                    # In this case, we'll create/find a thread with no patient/care_plan context
+                    logger.debug(
+                        "[DEBUG] No thread_id or context provided, creating thread without context"
+                    )
+                thread_id = llm_chat_service.get_or_create_thread(
+                    user_id=UserID(current_user_id),
+                    assistant_id=assistant_id,
+                    context=context,
+                )
+            else:
+                # Validate that the thread exists and belongs to the user
+                thread = llm_chat_service.get_thread(thread_id)
+                if not thread:
+                    return jsonify({"error": "Thread not found"}), 404
+                if str(thread.user_id) != str(current_user_id):
+                    return jsonify({"error": "Unauthorized access to thread"}), 403
 
             # Check if OpenAI API key is provided in request (for programmatic access)
             openai_api_key = data.get("openai_api_key")
@@ -133,15 +216,17 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
 
                 logger.debug("[DEBUG] Using OpenAI API key from request body")
 
-            # Add user message to persistent chat
-            chat = llm_chat_service.add_message(
-                UserID(current_user_id), assistant_id, "Me", prompt
+            # Add user message to thread (atomic insert)
+            llm_chat_service.add_message(
+                thread_id=thread_id, role="user", content=prompt
             )
 
             response_format = data.get("response_format")  # type: ignore
 
-            # Use the persistent chat history as context
-            history: list[Dict[str, Any]] = chat.messages
+            # Retrieve thread history for LLM context
+            history: list[Dict[str, Any]] = llm_chat_service.get_thread_history(
+                thread_id
+            )
             logger.debug(f"History: {history}")
 
             agent_mcp_config = (
@@ -149,6 +234,11 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                 if AGENT_VERSION == "v2"
                 else {"url": MCP_URL}  # Adapt based on your config structure
             )
+
+            # Extract client-side MCP config from request if provided
+            client_mcp_config = data.get("mcp_config")  # type: ignore
+            if client_mcp_config and not isinstance(client_mcp_config, dict):
+                return jsonify({"error": "mcp_config must be a dictionary"}), 400
 
             if AGENT_VERSION:
                 # raise NotImplementedError("LLM Agent v2 is not yet implemented")
@@ -166,6 +256,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                         prompt=prompt,
                         history=history,
                         response_format=response_format,
+                        client_mcp_config=client_mcp_config,
                     )
                 )
             else:
@@ -190,28 +281,121 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                     str(current_user_id), str(LLMModel.GPT_5_NANO)
                 )
 
-            # Add assistant response to persistent chat
+            # Add assistant response to thread (atomic insert)
             used_tools = response.get("used_tools", [])
-            chat = llm_chat_service.add_message(
-                UserID(current_user_id),
-                assistant_id,
-                "AI Assistant",
-                response.get("response", ""),
-                used_tools,
+            llm_chat_service.add_message(
+                thread_id=thread_id,
+                role="assistant",
+                content=response.get("response", ""),
+                used_tools=used_tools,
             )
 
-            # Save updated agent state to session (only for session-based auth)
-            # if hasattr(request, "session"): session["agent_data"] = agent.to_dict()
+            # Retrieve the updated thread to return to client
+            thread = llm_chat_service.get_thread(thread_id)
+            if not thread:
+                return jsonify({"error": "Failed to retrieve thread"}), 500
 
-            # Return chat data with tool usage information
-            chat_data = chat.to_dict()
-            chat_data["used_tools"] = response.get("used_tools", [])
+            # Get all messages for the thread to return complete conversation
+            messages = llm_chat_service.get_thread_history(thread_id)
 
-            return jsonify(chat_data), 200
+            # Return thread data with messages and tool usage information
+            response_data = thread.to_dict()
+            response_data["messages"] = messages
+            response_data["thread_id"] = thread_id
+            response_data["used_tools"] = used_tools
+
+            return jsonify(response_data), 200
         else:
             return jsonify({"error": "Method not allowed"}), 405
     except Exception as e:
         logger.error(f"Error in llm_agent_endpoint: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        llm_chat_service.close()
+
+
+def link_chat_thread_route() -> Tuple[Response, int]:
+    """
+    Route for linking a chat thread to a care plan (Adoption Pattern).
+    Used when a draft thread needs to be associated with a newly created care plan.
+
+    :param thread_id: The thread ID to link (from JSON body).
+    :param care_plan_id: The care plan ID to link to (from JSON body).
+    :return: Response object with success status or error message.
+    """
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    thread_id = data.get("thread_id")
+    care_plan_id = data.get("care_plan_id")
+
+    logger.debug(
+        f"[DEBUG] /api/llm_chat/link_thread called (thread_id={thread_id}, care_plan_id={care_plan_id})"
+    )
+
+    if not thread_id or not care_plan_id:
+        return jsonify({"error": "Missing thread_id or care_plan_id"}), 400
+
+    # Get current user from auth decorator (either session or API key)
+    current_user = get_current_user()
+    if not current_user:
+        logger.debug("[DEBUG] Not authenticated in link_chat_thread")
+        return jsonify({"error": "Not authenticated"}), 401
+
+    current_user_id = current_user.user_id
+    logger.debug(f"[DEBUG] User authenticated: {current_user_id}")
+
+    llm_chat_service = LLMChatService()
+    llm_chat_service.connect()
+    try:
+        # Security: Ensure current user owns this thread
+        thread = llm_chat_service.get_thread(thread_id)
+        if not thread:
+            return jsonify({"error": "Thread not found"}), 404
+
+        if str(thread.user_id) != str(current_user_id):
+            return jsonify({"error": "Unauthorized access to thread"}), 403
+
+        # Get the new context from request body
+        data: Optional[Dict[str, Any]] = request.json
+        if data is None:
+            return jsonify({"error": "Invalid JSON data"}), 400
+
+        # Build the update context
+        new_context_fields: Dict[str, Any] = {}
+
+        # Handle care_plan_id adoption
+        if "care_plan_id" in data:
+            care_plan_id = data.get("care_plan_id")
+            new_context_fields["care_plan_id"] = care_plan_id
+            # Clear draft_session_id when adopting to a real care plan
+            if care_plan_id is not None:
+                new_context_fields["draft_session_id"] = None
+
+        # Allow updating patient_id if needed
+        if "patient_id" in data:
+            new_context_fields["patient_id"] = data.get("patient_id")
+
+        if not new_context_fields:
+            return jsonify({"error": "No context fields provided for update"}), 400
+
+        # Update the thread context
+        updated_thread = llm_chat_service.update_thread_context(
+            thread_id, new_context_fields
+        )
+
+        if not updated_thread:
+            return jsonify({"error": "Failed to update thread context"}), 500
+
+        logger.debug(
+            f"Successfully linked thread {thread_id} with context: {new_context_fields}"
+        )
+
+        return jsonify({"status": "success", "thread": updated_thread.to_dict()}), 200
+
+    except Exception as e:
+        logger.error(f"Error in link_chat_thread: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         llm_chat_service.close()

@@ -3,8 +3,11 @@ Main application file for the Flask server.
 """
 
 import json
+import os
 import re
+import secrets
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 from urllib.parse import quote, urlencode
@@ -18,6 +21,7 @@ from amt_nano.services.lab_results import (
     hematology,
     serum_proteins,
 )
+from authlib.integrations.flask_client import OAuth
 from flask import (
     Blueprint,
     Flask,
@@ -28,9 +32,11 @@ from flask import (
     request,
     send_from_directory,
     session,
+    url_for,
 )
 from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.wrappers.response import Response as BaseResponse
 
 from lib.dummy_data import DUMMY_CONVERSATIONS
@@ -67,8 +73,9 @@ from lib.routes.chat import (
     get_user_conversations_route,
     send_message_route,
 )
+from lib.routes.ddx import DDXContext, suggest_ddx
 from lib.routes.education import get_education_content_route
-from lib.routes.llm_agent import llm_agent_endpoint_route
+from lib.routes.llm_agent import link_chat_thread_route, llm_agent_endpoint_route
 from lib.routes.loginradius_auth import (
     get_loginradius_config_route,
     loginradius_logout_route,
@@ -109,13 +116,12 @@ from lib.routes.users import (
     activate_user_route,
     change_password_route,
     check_users_exist_route,
+    create_user_programmatically_route,
     deactivate_user_route,
     get_all_users_route,
     get_api_usage_route,
     get_current_user_info_route,
     get_user_profile_route,
-    login_route,
-    logout_route,
     register_route,
     search_users_route,
     settings_route,
@@ -137,6 +143,7 @@ from lib.services.auth_decorators import (
     require_api_permission,
     require_auth,
     require_flexible_auth,
+    require_super_admin_key,
 )
 from lib.services.notifications import publish_event_with_buffer
 from lib.services.redis_client import get_redis_connection
@@ -145,9 +152,16 @@ from settings import (
     APP_URL,
     CLIENT_ID,
     COGNITO_DOMAIN,
+    CORS_ORIGINS,
     DEBUG,
     FLASK_SECRET_KEY,
+    FRONTEND_REDIRECT,
     HOST,
+    KEYCLOAK_AUTH_HOST,
+    KEYCLOAK_CLIENT_ID,
+    KEYCLOAK_CLIENT_SECRET,
+    KEYCLOAK_REALM,
+    KEYCLOAK_SERVER_METADATA_URL,
     PORT,
     REDIRECT_URI,
     SENTRY_DSN,
@@ -165,26 +179,35 @@ sentry_sdk.init(
 )
 
 app = Flask(__name__)
+
+import tempfile
+
+app.config["SESSION_FILE_DIR"] = (
+    tempfile.gettempdir()
+)  # Or a persistent K8s volume path
+
+if not os.path.exists(app.config["SESSION_FILE_DIR"]):
+    os.makedirs(app.config["SESSION_FILE_DIR"])
+
+app.config["SESSION_PERMANENT"] = True
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=1)
+
+
 CORS(
     app,
     resources={
         r"/*": {
-            "origins": [
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:3012",
-                "http://127.0.0.1:3012",
-                "https://demo.arsmedicatech.com",
-                # Flutter:
-                "http://localhost:5001",
-                "http://127.0.0.1:5001",
-            ],
+            "origins": CORS_ORIGINS,
             "supports_credentials": True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
+            "expose_headers": ["Set-Cookie"],
         }
     },
 )
+
+# This tells Flask to trust the headers set by the Ingress/Reverse Proxy
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 app.secret_key = FLASK_SECRET_KEY
 
@@ -194,15 +217,62 @@ app.config["SESSION_TYPE"] = "filesystem"
 if DEBUG:
     app.config.update(
         SESSION_COOKIE_SECURE=False,  # False only on http://localhost
-        SESSION_COOKIE_SAMESITE="None",
+        # SameSite=None requires Secure=True, which doesn't work with http://localhost
+        # Use Lax for local development - it works for same-site redirects
+        SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_DOMAIN=None,  # No domain set for local development
     )
+    os.environ["AUTHLIB_INSECURE_TRANSPORT"] = "true"
 else:
     app.config.update(
         SESSION_COOKIE_SECURE=True,  # False only on http://localhost
         SESSION_COOKIE_SAMESITE="None",  # 'Lax' if SPA and API are same origin
-        SESSION_COOKIE_DOMAIN=".arsmedicatech.com",  # leading dot, covers sub-domains
+        # SESSION_COOKIE_DOMAIN=".arsmedicatech.com",  # leading dot, covers sub-domains
+        SESSION_COOKIE_DOMAIN=None,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_PATH="/",
+        # This is required for cross-site cookies
+        SESSION_COOKIE_PARTITIONED=True,
     )
+
+
+oauth = OAuth(app)
+
+oauth.register(
+    name="keycloak",
+    client_id=KEYCLOAK_CLIENT_ID,
+    client_secret=KEYCLOAK_CLIENT_SECRET,
+    # The magic URL that tells Flask all the Keycloak endpoints
+    server_metadata_url=KEYCLOAK_SERVER_METADATA_URL,
+    client_kwargs={"scope": "openid profile email"},
+)
+
+
+@app.after_request
+def add_cookie_attributes(response):
+    print("After request - adjusting cookie attributes")
+
+    # Get all Set-Cookie headers
+    cookies = response.headers.getlist("Set-Cookie")
+    if not cookies:
+        print("No Set-Cookie headers found")
+        return response
+
+    response.headers.remove("Set-Cookie")
+    for cookie in cookies:
+        # Check for your specific session cookie name
+        if "amt_session" in cookie or "session" in cookie:
+            print(f"Adjusting cookie: {cookie}")
+            # Clean up any existing attributes to avoid duplicates
+            # Then force the modern 2026 cross-site requirements
+            base_cookie = cookie.split(";")[0]
+            new_cookie = (
+                f"{base_cookie}; Secure; HttpOnly; SameSite=None; Partitioned; Path=/"
+            )
+            response.headers.add("Set-Cookie", new_cookie)
+        else:
+            response.headers.add("Set-Cookie", cookie)
+    return response
 
 
 @app.route("/api/debug/session_v2")
@@ -405,13 +475,341 @@ def register() -> Tuple[Response, int]:
     return register_route()
 
 
+def clear_keycloak_states():
+    """Helper to remove any stale OIDC state keys from the session."""
+    for key in list(session.keys()):
+        if key.startswith("_state_keycloak_"):
+            session.pop(key, None)
+
+
+@app.route("/api/auth/register-page", methods=["GET"])
+def register_page():
+    """
+    Redirect to Keycloak's registration page for browser-based registration.
+    This is different from /api/auth/register which is for API-based registration.
+    """
+    # 1. Clear old states to prevent Mismatching State errors
+    clear_keycloak_states()
+
+    redirect_uri = url_for("authorize", _external=True)
+
+    # Ensure session is saved before redirecting (authlib stores OAuth state in session)
+    session.permanent = True
+    session.modified = True
+
+    # Passing kc_action="register" tells Keycloak's authorize endpoint
+    # to jump directly to the registration form instead of the login form.
+    return oauth.keycloak.authorize_redirect(redirect_uri, kc_action="register")
+
+
 @app.route("/api/auth/login", methods=["POST"])
 def login() -> Tuple[Response, int]:
     """
     Login endpoint for users.
     :return: Response object with login status.
     """
-    return login_route()
+    # 1. Clear old states to prevent Mismatching State errors
+    clear_keycloak_states()
+
+    redirect_uri = url_for("authorize", _external=True)
+
+    # Ensure session is saved before redirecting (authlib stores OAuth state in session)
+    session.permanent = True
+    session.modified = True
+
+    return oauth.keycloak.authorize_redirect(redirect_uri)
+
+
+@app.route("/api/auth/authorize")
+def authorize():
+    """
+    Handle Keycloak OAuth callback and create/update user in SurrealDB.
+    This is called after a user authenticates or registers via Keycloak.
+    """
+    try:
+        # Log session state for debugging
+        logger.debug(
+            f"Session keys before authorize_access_token: {list(session.keys())}"
+        )
+        logger.debug(f"Session ID: {session.get('_id', 'no _id')}")
+
+        # This handles the callback and verifies the JWT signature
+        # authlib stores the OAuth state in the session, so the session must persist
+        try:
+            # 1. Try to get the token
+            token = oauth.keycloak.authorize_access_token()
+        except Exception as e:
+            # 2. If it expired, check if we already have a user logged in
+            # (This handles the "Double Redirect" refresh issue)
+            if "authentication_expired" in str(e) or "already_used" in str(e):
+                logger.warning(
+                    "OAuth code already used or expired. Checking existing session..."
+                )
+                if "user_id" in session:
+                    return redirect(FRONTEND_REDIRECT)
+                # If no session exists, we must force a re-login
+                return redirect(url_for("login", prompt="login"))
+
+            logger.error(f"Handshake failed: {e}")
+            return redirect(f"{FRONTEND_REDIRECT}?error=auth_failed")
+
+        user_info = token.get("userinfo")
+
+        if not user_info:
+            logger.error("No user info in Keycloak token")
+            return redirect(f"{FRONTEND_REDIRECT}?error=no_user_info")
+
+        # Extract user information from Keycloak
+        keycloak_user_id = user_info.get("sub")
+        email = user_info.get("email")
+        username = user_info.get("preferred_username") or user_info.get("username")
+        first_name = user_info.get("given_name") or user_info.get("first_name")
+        last_name = user_info.get("family_name") or user_info.get("last_name")
+
+        # Get user type from Keycloak attributes (if available)
+        attributes = user_info.get("attributes", {})
+        user_type = None
+        if isinstance(attributes, dict):
+            user_type_list = attributes.get("userType", [])
+            if user_type_list:
+                user_type = (
+                    user_type_list[0]
+                    if isinstance(user_type_list, list)
+                    else user_type_list
+                )
+
+        # Default role is "provider" as per requirements
+        role = (
+            user_type if user_type in ["patient", "provider", "admin"] else "provider"
+        )
+
+        if not keycloak_user_id or not email:
+            logger.error(f"Missing required user info from Keycloak: {user_info}")
+            return redirect(f"{FRONTEND_REDIRECT}?error=missing_user_info")
+
+        # Check if user exists in SurrealDB
+        user_service = UserService()
+        user_service.connect()
+        try:
+            # First check by external_id (Keycloak user ID)
+            existing_user = None
+            if keycloak_user_id:
+                existing_user = user_service.get_user_by_external_id(
+                    keycloak_user_id, "keycloak"
+                )
+
+            # If not found by external_id, check by email
+            if not existing_user and email:
+                existing_user = user_service.get_user_by_email(email)
+
+            if existing_user:
+                # User exists - update if needed
+                logger.debug(f"Existing Keycloak user found: {existing_user.id}")
+                # Update external_id if it wasn't set before
+                if (
+                    not existing_user.external_id
+                    or existing_user.auth_provider != "keycloak"
+                ):
+                    existing_user.external_id = keycloak_user_id
+                    existing_user.auth_provider = "keycloak"
+                    existing_user.is_federated = True
+                    user_service.update_user(
+                        str(existing_user.id), existing_user.to_dict()
+                    )
+            else:
+                # User doesn't exist - create in SurrealDB
+                logger.debug(f"Creating new Keycloak user in SurrealDB: {email}")
+
+                # Use username if available, otherwise use email
+                if not username:
+                    username = (
+                        email.split("@")[0] if email else f"user_{keycloak_user_id[:8]}"
+                    )
+
+                # Ensure username is unique - if it exists, append a suffix
+                base_username = username
+                counter = 1
+                while user_service.get_user_by_username(username):
+                    username = f"{base_username}{counter}"
+                    counter += 1
+                    if counter > 1000:  # Safety limit
+                        username = f"user_{keycloak_user_id[:8]}"
+                        break
+
+                create_user_result = user_service.create_user(
+                    username=username,
+                    email=email,
+                    password="",  # No password for Keycloak users
+                    first_name=first_name,
+                    last_name=last_name,
+                    role=role,
+                    is_federated=True,
+                    auth_provider="keycloak",
+                    external_id=keycloak_user_id,
+                    external_data={
+                        "keycloak_user_id": keycloak_user_id,
+                        "userinfo": user_info,
+                    },
+                )
+
+                if not create_user_result["success"] or not create_user_result["user"]:
+                    logger.error(
+                        f"Failed to create Keycloak user in SurrealDB: {create_user_result['message']}"
+                    )
+                    return redirect(
+                        f"{FRONTEND_REDIRECT}?error=user_creation_failed&message={create_user_result['message']}"
+                    )
+
+                existing_user = create_user_result["user"]
+                logger.info(
+                    f"Created new Keycloak user in SurrealDB: {existing_user.id}"
+                )
+
+            # Create session token and store in database
+            from lib.services.keycloak_service import KeycloakService
+
+            keycloak_service = KeycloakService()
+            session_token = keycloak_service._generate_session_token()
+
+            user_session = user_service.create_session(
+                user_id=existing_user.id,
+                username=existing_user.username,
+                role=existing_user.role,
+                session_token=session_token,
+            )
+
+            if not user_session:
+                logger.error("Failed to create user session")
+                return redirect(f"{FRONTEND_REDIRECT}?error=session_creation_failed")
+
+            # Store user info in session
+            session["user"] = user_info
+            session["user_id"] = existing_user.id
+            session["username"] = existing_user.username
+            session["role"] = existing_user.role
+            session["auth_token"] = session_token
+            session.modified = True
+
+            logger.debug(
+                f"Keycloak authentication successful for user: {existing_user.username}"
+            )
+
+            # .....................
+
+            ott = secrets.token_urlsafe(32)
+
+            user_service.db.query(
+                "CREATE ott_exchange SET id = $ott, session_token = $st, expires = time::now() + 5m",
+                {"ott": ott, "st": session_token},
+            )
+        finally:
+            user_service.close()
+
+        return redirect(f"{FRONTEND_REDIRECT}?ott={ott}")
+
+    except Exception as e:
+        logger.error(f"Error in Keycloak authorize callback: {e}", exc_info=True)
+        return redirect(f"{FRONTEND_REDIRECT}?error=auth_error&message={str(e)}")
+
+
+@app.route("/api/auth/exchange", methods=["POST"])
+def exchange_token():
+    """
+    Exchange a One-Time Token (OTT) for a full session.
+    This is called by the frontend after a successful redirect.
+    """
+    data = request.json
+    ott = data.get("ott")
+
+    # 1. Check if the user ALREADY has a session cookie from a parallel request
+    if session.get("user_id"):
+        print(f"DEBUG EXCHANGE: User already has a session. Session: {dict(session)}")
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "user": {"id": session["user_id"], "username": session["username"]},
+                    "token": session.get("auth_token"),
+                }
+            ),
+            200,
+        )
+
+    if not ott:
+        print("DEBUG EXCHANGE: Missing OTT in request")
+        return jsonify({"success": False, "message": "Missing OTT"}), 400
+
+    user_service = UserService()
+    user_service.connect()
+    try:
+        # 1. Find and consume the OTT (DELETE it so it can't be reused)
+        # We check the 'expires' field to ensure it's still fresh
+        result = user_service.db.query(
+            "DELETE type::thing('ott_exchange', $ott) WHERE expires > time::now() RETURN BEFORE",
+            {"ott": ott},
+        )
+
+        if not result or not result[0]:
+            print("DEBUG EXCHANGE: Invalid or expired OTT")
+            return (
+                jsonify({"success": False, "message": "Invalid or expired token"}),
+                401,
+            )
+
+        session_token = result[0]["session_token"]
+
+        # 2. Retrieve the actual session data from SurrealDB
+        user_session = user_service.validate_session(session_token)
+        if not user_session:
+            print("DEBUG EXCHANGE: Session not found for token")
+            return jsonify({"success": False, "message": "Session not found"}), 401
+
+        # 3. SET THE FLASK SESSION
+        # This is the "Magic" moment. Because this is a direct POST from Flutter,
+        # the browser treats the Set-Cookie header as a first-party action.
+        session["user_id"] = user_session.user_id
+        session["username"] = user_session.username
+        session["role"] = user_session.role
+        session["auth_token"] = session_token
+        session.permanent = True
+        session.modified = True
+
+        print(f"DEBUG EXCHANGE: Session content after set: {dict(session)}")
+        print(f"DEBUG EXCHANGE: Session modified flag: {session.modified}")
+
+        response = jsonify(
+            {
+                "success": True,
+                "user": {
+                    "id": user_session.user_id,
+                    "username": user_session.username,
+                    "role": user_session.role,
+                },
+                "token": session_token,
+            }
+        )
+
+        # MANUALLY set the cookie on the response object itself
+        # This bypasses the automatic session-handling logic that is failing you
+        response.set_cookie(
+            "amt_session",
+            value=session_token,  # Or your specific session identifier
+            max_age=86400,
+            path="/",
+            domain=None,
+            secure=True,
+            httponly=True,
+            samesite="None",
+        )
+
+        print(f"DEBUG RESPONSE: Headers before return: {response.headers}")
+
+        return (
+            response,
+            200,
+        )
+    finally:
+        user_service.close()
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -421,7 +819,11 @@ def logout() -> Tuple[Response, int]:
     Logout endpoint for users.
     :return: Response object with logout status.
     """
-    return logout_route()
+    session.pop("user", None)
+    return redirect(
+        f"https://{KEYCLOAK_AUTH_HOST}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/logout"
+        f"?post_logout_redirect_uri={url_for('index', _external=True)}"
+    )
 
 
 @app.route("/api/auth/me", methods=["GET"])
@@ -477,6 +879,17 @@ def activate_user(user_id: str) -> Tuple[Response, int]:
     return activate_user_route(user_id)
 
 
+@app.route("/api/admin/users/create", methods=["POST"])
+@require_super_admin_key
+def create_user_programmatically() -> Tuple[Response, int]:
+    """
+    Create a new user programmatically (super admin only).
+    Requires X-Super-Admin-Key header with ENCRYPTION_KEY value.
+    :return: Response object with user creation status.
+    """
+    return create_user_programmatically_route()
+
+
 @app.route("/api/admin/setup", methods=["POST"])
 def setup_default_admin() -> Tuple[Response, int]:
     """
@@ -493,6 +906,28 @@ def check_users_exist() -> Tuple[Response, int]:
     :return: Response object with existence check status.
     """
     return check_users_exist_route()
+
+
+@app.route("/api/users/update", methods=["PUT"])
+@require_auth
+def update_user() -> Tuple[Response, int]:
+    """
+    Update attributes of a user.
+    :return: Response object with update status.
+    """
+    user_service = UserService()
+    user_service.connect()
+    user_id = session.get("user_id")
+    updates = request.json
+
+    update_result = user_service.update_user(user_id, updates)
+
+    user_service.close()
+
+    if update_result["success"]:
+        return jsonify({"message": "User updated successfully"}), 200
+    else:
+        return jsonify({"error": update_result["message"]}), 400
 
 
 @app.route("/api/debug/session", methods=["GET"])
@@ -584,6 +1019,18 @@ def llm_agent_endpoint() -> Tuple[Response, int]:
     :return: Response object with LLM agent data.
     """
     return llm_agent_endpoint_route()
+
+
+@app.route("/api/llm_chat/link_thread", methods=["POST"])
+@require_flexible_auth
+def link_chat_thread() -> Tuple[Response, int]:
+    """
+    Link a chat thread to a care plan (Adoption Pattern).
+    Used when a draft thread needs to be associated with a newly created care plan.
+    :param thread_id: The thread ID to link.
+    :return: Response object with success status or error message.
+    """
+    return link_chat_thread_route()
 
 
 @app.route("/api/llm_chat/reset", methods=["POST"])
@@ -1552,6 +1999,23 @@ def get_administrators(org_id: str) -> Tuple[Response, int]:
     :return: Response object with administrators data.
     """
     return get_administrators_route(org_id)
+
+
+@app.route("/api/ddx", methods=["POST"])
+def ddx_suggest() -> Tuple[Response, int]:
+    """
+    Suggest differential diagnoses based on the provided prompt and details.
+    :return: Response object with suggested differential diagnoses.
+    """
+    data = request.json
+    prompt = data.get("prompt", "")
+    details = data.get("details", {})
+    n_suggestions = data.get("n_suggestions", 3)
+
+    context = DDXContext(prompt=prompt, details=details)
+    suggestions = suggest_ddx(context, n_suggestions)
+
+    return jsonify([suggestion.to_json() for suggestion in suggestions])
 
 
 @app.route("/healthz")
