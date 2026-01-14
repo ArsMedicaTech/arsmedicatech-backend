@@ -1,28 +1,29 @@
 """
 Webhook subscription model for storing webhook configurations
 """
+
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 
 class WebhookSubscription:
     """
     Model representing a webhook subscription.
     """
-    
+
     def __init__(
-            self,
-            event_name: str,
-            target_url: str,
-            secret: str,
-            enabled: bool = True,
-            id: Optional[str] = None,
-            created_at: Optional[Union[str, datetime]] = None,
-            updated_at: Optional[Union[str, datetime]] = None
+        self,
+        event_name: str,
+        target_url: str,
+        secret: str,
+        enabled: bool = True,
+        id: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = None,
     ) -> None:
         """
         Initialize a WebhookSubscription object
-        
+
         :param event_name: Name of the event to subscribe to (e.g., 'appointment.created')
         :param target_url: URL where webhook should be sent
         :param secret: Secret key for HMAC signature
@@ -33,47 +34,31 @@ class WebhookSubscription:
         """
         if not event_name or not target_url or not secret:
             raise ValueError("Missing required fields: event_name, target_url, secret")
-        
+
         self.event_name = event_name
         self.target_url = target_url
         self.secret = secret
         self.enabled = enabled
         self.id = id
-        self.created_at = created_at or datetime.now(timezone.utc).isoformat()
-        self.updated_at = updated_at or datetime.now(timezone.utc).isoformat()
-    
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.updated_at = updated_at or datetime.now(timezone.utc)
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert webhook subscription to dictionary for database storage
-        
+
         :return: Dictionary representation of the webhook subscription
         """
         # Convert ISO strings to datetime objects for SurrealDB
-        created_at = self.created_at
-        updated_at = self.updated_at
-        
-        # If they're strings, convert to datetime objects
-        if isinstance(created_at, str):
-            try:
-                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-            except (ValueError, AttributeError):
-                pass
-                
-        if isinstance(updated_at, str):
-            try:
-                updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
-            except (ValueError, AttributeError):
-                pass
-        
         return {
-            'event_name': self.event_name,
-            'target_url': self.target_url,
-            'secret': self.secret,
-            'enabled': self.enabled,
-            'created_at': created_at,
-            'updated_at': updated_at
+            "event_name": self.event_name,
+            "target_url": self.target_url,
+            "secret": self.secret,
+            "enabled": self.enabled,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "WebhookSubscription":
         print(f"[from_dict] Called with data: {data}")
@@ -84,11 +69,8 @@ class WebhookSubscription:
                 id_val = str(id_val)
             # Handle datetimes as ISO strings
             created_at = data.get("created_at")
-            if isinstance(created_at, datetime):
-                created_at = created_at.isoformat()
             updated_at = data.get("updated_at")
-            if isinstance(updated_at, datetime):
-                updated_at = updated_at.isoformat()
+
             return cls(
                 event_name=data["event_name"],
                 target_url=data["target_url"],
@@ -100,6 +82,30 @@ class WebhookSubscription:
             )
         except Exception as e:
             import traceback
-            print(f"[WebhookSubscription.from_dict] Error parsing: {data}\nException: {e}")
+
+            print(
+                f"[WebhookSubscription.from_dict] Error parsing: {data}\nException: {e}"
+            )
             traceback.print_exc()
-            raise 
+            raise
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the Encounter table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+        DEFINE TABLE webhook_subscription SCHEMAFULL;
+        
+        DEFINE FIELD event_name ON webhook_subscription TYPE string;
+        DEFINE FIELD target_url ON webhook_subscription TYPE string;
+        DEFINE FIELD secret ON webhook_subscription TYPE string;
+        DEFINE FIELD enabled ON webhook_subscription TYPE bool DEFAULT true;
+        DEFINE FIELD created_at ON webhook_subscription TYPE datetime VALUE time::now() READONLY;
+        DEFINE FIELD updated_at ON webhook_subscription TYPE datetime VALUE time::now();
+
+        DEFINE INDEX idx_event_name ON webhook_subscription COLUMNS event_name;
+        DEFINE INDEX idx_enabled ON webhook_subscription COLUMNS enabled;
+        DEFINE INDEX idx_created_at ON webhook_subscription COLUMNS created_at;
+        """

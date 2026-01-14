@@ -1,11 +1,13 @@
 """
 User Service for managing user accounts, authentication, and settings.
 """
-import uuid
-from typing import Any, Dict, List, Optional
 
-from lib.db.surreal import DbController
-from lib.models.user.user import User
+import uuid
+from typing import Any, Dict, List, Literal, Optional, TypedDict, cast
+
+from amt_nano.db.surreal import DbController
+
+from lib.models.user.user import User, UserRoles
 from lib.models.user.user_session import UserSession
 from lib.models.user.user_settings import UserSettings
 from settings import logger
@@ -15,12 +17,31 @@ class UserNotAffiliatedError(Exception):
     """
     Exception raised when a user is not affiliated with an organization.
     """
+
     pass
+
+
+class CreateUserResult(TypedDict):
+    success: bool
+    message: str
+    user: Optional[User]
+
+
+class UpdateUserResult(TypedDict):
+    success: bool
+    message: str
+    user: Optional[User]
+
+
+class CreateSurrealDbResult(TypedDict):
+    id: str
+
 
 class UserService:
     """
     Service for managing user accounts, authentication, and settings.
     """
+
     def __init__(self, db_controller: Optional[DbController] = None) -> None:
         """
         Initialize UserService with a database controller.
@@ -30,7 +51,7 @@ class UserService:
         """
         self.db = db_controller or DbController()
         self.active_sessions: Dict[str, UserSession] = {}
-    
+
     def connect(self) -> None:
         """
         Connect to database
@@ -41,18 +62,22 @@ class UserService:
         logger.debug("Connecting to database...")
         try:
             logger.debug(f"Database controller type: {type(self.db)}")
-            logger.debug(f"Database controller has connect method: {hasattr(self.db, 'connect')}")
-            
-            if hasattr(self.db, 'connect'):
+            logger.debug(
+                f"Database controller has connect method: {hasattr(self.db, 'connect')}"
+            )
+
+            if hasattr(self.db, "connect"):
                 self.db.connect()
                 logger.debug("Database connection successful")
             else:
-                logger.debug("Database controller does not have connect method - using mock mode")
+                logger.debug(
+                    "Database controller does not have connect method - using mock mode"
+                )
         except Exception as e:
             logger.debug(f"Database connection error: {e}")
             logger.debug("Continuing with mock database mode")
             # Don't raise the exception, continue with mock mode
-    
+
     def close(self) -> None:
         """
         Close database connection
@@ -70,24 +95,25 @@ class UserService:
         """
         self.db.connect()
         result = self.db.query(
-            "SELECT organization_id FROM User WHERE id = $user_id",
-            {"user_id": user_id}
+            "SELECT organization_id FROM $user_id", {"user_id": user_id}
         )
         if result and len(result) > 0:
-            organization_id = result[0].get('organization_id')
+            organization_id = result[0].get("organization_id")
             if organization_id:
                 return organization_id
-            raise UserNotAffiliatedError(f"Organization ID not found for user {user_id}")
+            raise UserNotAffiliatedError(
+                f"Organization ID not found for user {user_id}"
+            )
         raise ValueError("User not found or has no organization ID")
 
     def create_session(
-            self,
-            user_id: str,
-            username: str,
-            role: str,
-            session_token: str,
-            created_at: Optional[str] = None,
-            expires_at: Optional[str] = None
+        self,
+        user_id: str,
+        username: str,
+        role: Literal["patient", "provider", "admin"],
+        session_token: str,
+        created_at: Optional[str] = None,
+        expires_at: Optional[str] = None,
     ) -> UserSession:
         """
         Create a new user session [for federated login]
@@ -101,39 +127,52 @@ class UserService:
 
         :return: UserSession object
         """
+        from datetime import datetime
+
+        def parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
+            if dt_str is None:
+                return None
+            try:
+                return datetime.fromisoformat(dt_str)
+            except Exception:
+                return None
+
         user_session = UserSession(
             user_id=user_id,
             username=username,
             role=role,
-            created_at=created_at,
-            expires_at=expires_at,
-            session_token=session_token
+            created_at=parse_datetime(created_at),
+            expires_at=parse_datetime(expires_at),
+            session_token=session_token,
         )
 
         self.connect()
 
         session_data = user_session.to_dict()
-        session_id = str(uuid.uuid4()).replace('-', '')
+        session_id = str(uuid.uuid4()).replace("-", "")
         record_id = f"Session:{session_id}"
 
         self.db.query(
             f"CREATE {record_id} SET user_id = $user_id, username = $username, role = $role, "
             f"created_at = $created_at, expires_at = $expires_at, session_token = $session_token;",
-            session_data
+            session_data,
         )
 
         return user_session
-    
+
     def create_user(
-            self,
-            username: str,
-            email: str,
-            password: str,
-            first_name: Optional[str] = None,
-            last_name: Optional[str] = None,
-            role: str = "patient",
-            is_federated: bool = False
-    ) -> tuple[bool, str, Optional[User]]:
+        self,
+        username: str,
+        email: str,
+        password: str,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        role: str = "patient",
+        is_federated: bool = False,
+        auth_provider: Literal["local", "cognito", "loginradius"] = "local",
+        external_id: Optional[str] = None,
+        external_data: Optional[Dict[str, Any]] = None,
+    ) -> CreateUserResult:
         """
         Create a new user account
 
@@ -144,34 +183,44 @@ class UserService:
         :param last_name: Last name of the user (optional)
         :param role: Role of the user (default is "patient")
         :param is_federated: Whether the user is created via federated login (default is False)
-        
+        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param external_id: External user ID from OAuth provider
+        :param external_data: Additional data from OAuth provider
+
         :return: (success, message, user_object)
         """
         try:
             # Validate input
             valid, msg = User.validate_username(username)
             if not valid:
-                return False, msg, None
-            
-            valid, msg = User.validate_email(email)
-            if not valid:
-                return False, msg, None
-            
+                return CreateUserResult(success=False, message=msg, user=None)
+
+            # For OAuth users, we might have generated a fallback email
+            # Skip email validation for OAuth users with generated emails
+            if not (is_federated and email.endswith("@loginradius.local")):
+                valid, msg = User.validate_email(email)
+                if not valid:
+                    return CreateUserResult(success=False, message=msg, user=None)
+
             if not is_federated:
                 valid, msg = User.validate_password(password)
                 if not valid:
-                    return False, msg, None
-            
+                    return CreateUserResult(success=False, message=msg, user=None)
+
             # Check if username already exists
             existing_user = self.get_user_by_username(username)
             if existing_user:
-                return False, "Username already exists", None
-            
+                return CreateUserResult(
+                    success=False, message="Username already exists", user=None
+                )
+
             # Check if email already exists
             existing_user = self.get_user_by_email(email)
             if existing_user:
-                return False, "Email already exists", None
-            
+                return CreateUserResult(
+                    success=False, message="Email already exists", user=None
+                )
+
             # Create user
             user = User(
                 username=username,
@@ -179,36 +228,46 @@ class UserService:
                 password=password,
                 first_name=first_name,
                 last_name=last_name,
-                role=role
+                role=cast(UserRoles, role),
+                is_federated=is_federated,
+                auth_provider=auth_provider,
+                external_id=external_id,
+                external_data=external_data,
             )
-            
+
             # Save to database
             logger.debug(f"Creating user with data: {user.to_dict()}")
-            
-            result = self.db.create('User', user.to_dict())
+
+            result = cast(CreateSurrealDbResult, self.db.create("user", user.to_dict()))  # type: ignore
             logger.debug(f"Database create result: {result}")
-            logger.debug(f"Database create result type: {type(result)}")
-            if result and result.get('id'):
-                user.id = result['id']
+            # logger.debug(f"Database create result type: {type(result)}")
+
+            if result and result["id"]:
+                user.id = result["id"]
+
+                if type(getattr(user, "id")) is not str:
+                    raise TypeError("User ID is not a string")
                 logger.debug(f"User created successfully with ID: {user.id}")
                 logger.debug(f"User ID type: {type(user.id)}")
-                
+
                 # Test if we can immediately retrieve the user
-                logger.debug(f"Testing immediate user retrieval...")
+                logger.debug("Testing immediate user retrieval...")
                 test_user = self.get_user_by_id(user.id)
                 if test_user:
-                    logger.debug(f"User can be retrieved immediately: {test_user.username}")
+                    logger.debug(
+                        f"User can be retrieved immediately: {test_user.username}"
+                    )
                 else:
-                    logger.debug(f"User cannot be retrieved immediately")
-                
+                    logger.debug("User cannot be retrieved immediately")
+
                 # If the user is a patient, create a corresponding Patient record
                 if user.role == "patient" and user.id:
                     try:
-                        from lib.models.patient.patient_crud import \
-                            create_patient
+                        from lib.models.patient.patient_crud import create_patient
+
                         user_id = str(user.id)
-                        if ':' in user_id:
-                            patient_id = user_id.split(':', 1)[1]
+                        if ":" in user_id:
+                            patient_id = user_id.split(":", 1)[1]
                         else:
                             patient_id = user_id
                         patient_data: Dict[str, Any] = {
@@ -228,24 +287,36 @@ class UserService:
                                 patient_data[key] = ""
                         patient_result = create_patient(patient_data)
                         if not patient_result:
-                            logger.error(f"Failed to create patient record for user: {user.id}")
+                            logger.error(
+                                f"Failed to create patient record for user: {user.id}"
+                            )
                     except Exception as e:
                         logger.error(f"Exception during patient record creation: {e}")
-                return True, "User created successfully", user
+                return CreateUserResult(
+                    success=True, message="User created successfully", user=user
+                )
             else:
                 logger.debug(f"Failed to create user. Result: {result}")
-                return False, "Failed to create user in database", None
-                
+                return CreateUserResult(
+                    success=False,
+                    message="Failed to create user in database",
+                    user=None,
+                )
+
         except Exception as e:
-            return False, f"Error creating user: {str(e)}", None
-    
-    def authenticate_user(self, username: str, password: str) -> tuple[bool, str, Optional[UserSession]]:
+            return CreateUserResult(
+                success=False, message=f"Error creating user: {str(e)}", user=None
+            )
+
+    def authenticate_user(
+        self, username: str, password: str
+    ) -> tuple[bool, str, Optional[UserSession]]:
         """
         Authenticate a user with username and password
 
         :param username: Username of the user
         :param password: Password of the user
-        
+
         :return: (success, message, session_object)
         """
         try:
@@ -255,45 +326,47 @@ class UserService:
             logger.debug(f"User lookup result: {user}")
             if not user:
                 return False, "Invalid username or password", None
-            
+
             # Check if user is active
             if not user.is_active:
                 return False, "Account is deactivated", None
-            
+
             # Verify password
             logger.debug(f"Verifying password for user: {user.username}")
             password_valid = user.verify_password(password)
             logger.debug(f"Password verification result: {password_valid}")
             if not password_valid:
                 return False, "Invalid username or password", None
-            
+
             # Create session
             logger.debug(f"Creating session for user: {user.username}")
             logger.debug(f"User ID being stored in session: {user.id}")
             session = UserSession(
                 user_id=user.id if user.id is not None else "",
                 username=user.username,
-                role=user.role
+                role=user.role,
             )
             logger.debug(f"Session created with user_id: {session.user_id}")
-            
+
             # Store session in database
             try:
-                self.db.create('Session', session.to_dict())
-                logger.debug(f"Session stored in database: {session.session_token[:10]}...")
-                
+                self.db.create("user_session", session.to_dict())
+                logger.debug(
+                    f"Session stored in database: {session.session_token[:10]}..."
+                )
+
                 # Also keep in memory for faster access
                 self.active_sessions[session.session_token] = session
             except Exception as e:
                 logger.debug(f"Error storing session in database: {e}")
                 # Fallback to memory-only storage
                 self.active_sessions[session.session_token] = session
-            
+
             return True, "Authentication successful", session
-            
+
         except Exception as e:
             return False, f"Authentication error: {str(e)}", None
-    
+
     def get_user_by_username(self, username: str) -> Optional[User]:
         """
         Get user by username
@@ -304,20 +377,19 @@ class UserService:
             logger.debug(f"get_user_by_username - username: {username}")
 
             result = self.db.query(
-                "SELECT * FROM User WHERE username = $username",
-                {"username": username}
+                "SELECT * FROM user WHERE username = $username", {"username": username}
             )
-            
+
             if result and len(result) > 0:
                 user_data = result[0]
                 return User.from_dict(user_data)
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Error getting user by username: {e}")
             return None
-    
+
     def get_user_by_email(self, email: str) -> Optional[User]:
         """
         Get user by email
@@ -327,20 +399,44 @@ class UserService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM User WHERE email = $email",
-                {"email": email}
+                "SELECT * FROM user WHERE email = $email", {"email": email}
             )
-            
+
             if result and len(result) > 0:
                 # The query result contains user data directly, not nested in a 'result' field
                 user_dict = result[0]
                 return User.from_dict(user_dict)
             return None
-            
+
         except Exception as e:
             logger.error(f"Error getting user by email: {e}")
             return None
-    
+
+    def get_user_by_external_id(
+        self, external_id: str, auth_provider: str
+    ) -> Optional[User]:
+        """
+        Get user by external ID and auth provider
+
+        :param external_id: External user ID from OAuth provider
+        :param auth_provider: Authentication provider (cognito, loginradius, etc.)
+        :return: User object if found, None otherwise
+        """
+        try:
+            result = self.db.query(
+                "SELECT * FROM user WHERE external_id = $external_id AND auth_provider = $auth_provider",
+                {"external_id": external_id, "auth_provider": auth_provider},
+            )
+
+            if result and len(result) > 0:
+                user_dict = result[0]
+                return User.from_dict(user_dict)
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting user by external ID: {e}")
+            return None
+
     def get_user_by_id(self, user_id: str) -> Optional[User]:
         """
         Get user by ID
@@ -350,25 +446,25 @@ class UserService:
         try:
             logger.debug(f"get_user_by_id - user_id: {user_id}")
             logger.debug(f"get_user_by_id - user_id type: {type(user_id)}")
-            
+
             # Use a simple approach: get all users and find the one with matching ID
             logger.debug("Getting all users to find by ID...")
             all_users = self.get_all_users()
             logger.debug(f"Found {len(all_users)} users")
-            
+
             for user in all_users:
                 logger.debug(f"Checking user: {user.username} (ID: {user.id})")
                 if user.id == user_id:
                     logger.debug(f"Found matching user: {user.username}")
                     return user
-            
+
             logger.debug(f"No user found for ID: {user_id}")
             return None
-            
+
         except Exception as e:
             logger.error(f"Error getting user by ID: {e}")
             return None
-    
+
     def validate_session(self, token: str) -> Optional[UserSession]:
         """
         Validate session token and return session if valid
@@ -376,7 +472,7 @@ class UserService:
         :return: UserSession object if valid, None otherwise
         """
         logger.debug(f"validate_session - token: {token[:10] if token else 'None'}...")
-        
+
         # First check memory cache
         session = self.active_sessions.get(token)
         if session and not session.is_expired():
@@ -385,35 +481,35 @@ class UserService:
             return session
         elif session and session.is_expired():
             # Remove expired session
-            logger.debug(f"Removing expired session from memory cache")
+            logger.debug("Removing expired session from memory cache")
             del self.active_sessions[token]
-        
+
         # If not in memory, check database
         try:
             result = self.db.query(
                 "SELECT * FROM Session WHERE session_token = $session_token",
-                {"session_token": token}
+                {"session_token": token},
             )
-            
+
             if result and len(result) > 0:
                 session_data = result[0]
                 logger.debug(f"Session data from database: {session_data}")
                 session = UserSession.from_dict(session_data)
                 logger.debug(f"Session user_id from database: {session.user_id}")
-                
+
                 if session.is_expired():
                     # Remove expired session from database
                     self.db.delete(f"Session:{session_data.get('id')}")
                     return None
-                
+
                 # Add to memory cache
                 self.active_sessions[token] = session
                 return session
         except Exception as e:
             logger.debug(f"Error validating session from database: {e}")
-        
+
         return None
-    
+
     def logout(self, token: str) -> bool:
         """
         Logout user by removing session
@@ -423,23 +519,23 @@ class UserService:
         # Remove from memory
         if token in self.active_sessions:
             del self.active_sessions[token]
-        
+
         # Remove from database
         try:
             result = self.db.query(
                 "SELECT * FROM Session WHERE session_token = $session_token",
-                {"session_token": token}
+                {"session_token": token},
             )
-            
+
             if result and len(result) > 0:
                 session_data = result[0]
                 self.db.delete(f"Session:{session_data.get('id')}")
                 return True
         except Exception as e:
             logger.debug(f"Error removing session from database: {e}")
-        
+
         return True
-    
+
     def get_all_users(self) -> List[User]:
         """
         Get all users (admin only)
@@ -447,21 +543,21 @@ class UserService:
         """
         try:
             logger.debug("Getting all users from database...")
-            results = self.db.select_many('User')
+            results = self.db.select_many("User")
             logger.debug(f"Raw results: {results}")
             users: List[User] = []
             for user_data in results:
                 # Remove password hash for security
-                user_data.pop('password_hash', None)
+                user_data.pop("password_hash", None)
                 users.append(User.from_dict(user_data))
             logger.debug(f"Processed {len(users)} users")
             return users
-            
+
         except Exception as e:
             logger.error(f"Error getting all users: {e}")
             return []
-    
-    def update_user(self, user_id: str, updates: Dict[str, Any]) -> tuple[bool, str]:
+
+    def update_user(self, user_id: str, updates: Dict[str, Any]) -> UpdateUserResult:
         """
         Update user information
         :param user_id: ID of the user to update
@@ -470,20 +566,34 @@ class UserService:
         """
         try:
             # Remove sensitive fields that shouldn't be updated directly
-            updates.pop('password_hash', None)
-            updates.pop('id', None)
-            updates.pop('created_at', None)
-            
+            updates.pop("password_hash", None)
+            updates.pop("id", None)
+            updates.pop("created_at", None)
+
             result = self.db.update(f"User:{user_id}", updates)
             if result:
-                return True, "User updated successfully"
+                return {
+                    "success": True,
+                    "message": "User updated successfully",
+                    "user": User.from_dict(updates),
+                }
             else:
-                return False, "Failed to update user"
-                
+                return {
+                    "success": False,
+                    "message": "Failed to update user",
+                    "user": None,
+                }
+
         except Exception as e:
-            return False, f"Error updating user: {str(e)}"
-    
-    def change_password(self, user_id: str, current_password: str, new_password: str) -> tuple[bool, str]:
+            return {
+                "success": False,
+                "message": f"Error updating user: {str(e)}",
+                "user": None,
+            }
+
+    def change_password(
+        self, user_id: str, current_password: str, new_password: str
+    ) -> tuple[bool, str]:
         """
         Change user password
 
@@ -497,29 +607,29 @@ class UserService:
             user = self.get_user_by_id(user_id)
             if not user:
                 return False, "User not found"
-            
+
             # Verify current password
             if not user.verify_password(current_password):
                 return False, "Current password is incorrect"
-            
+
             # Validate new password
             valid, msg = User.validate_password(new_password)
             if not valid:
                 return False, msg
-            
+
             # Hash new password
             new_hash = User.hash_password(new_password)
-            
+
             # Update password
             result = self.db.update(f"User:{user_id}", {"password_hash": new_hash})
             if result:
                 return True, "Password changed successfully"
             else:
                 return False, "Failed to change password"
-                
+
         except Exception as e:
             return False, f"Error changing password: {str(e)}"
-    
+
     def deactivate_user(self, user_id: str) -> tuple[bool, str]:
         """
         Deactivate a user account
@@ -532,10 +642,10 @@ class UserService:
                 return True, "User deactivated successfully"
             else:
                 return False, "Failed to deactivate user"
-                
+
         except Exception as e:
             return False, f"Error deactivating user: {str(e)}"
-    
+
     def activate_user(self, user_id: str) -> tuple[bool, str]:
         """
         Activate a user account
@@ -549,10 +659,10 @@ class UserService:
                 return True, "User activated successfully"
             else:
                 return False, "Failed to activate user"
-                
+
         except Exception as e:
             return False, f"Error activating user: {str(e)}"
-    
+
     def create_default_admin(self) -> tuple[bool, str]:
         """
         Create a default admin user if no users exist
@@ -564,25 +674,28 @@ class UserService:
             users = self.get_all_users()
             if users:
                 return True, "Users already exist, skipping default admin creation"
-            
+
             # Create default admin
-            success, message, _ = self.create_user(
+            create_user_result: CreateUserResult = self.create_user(
                 username="admin",
                 email="admin@arsmedicatech.com",
                 password="Admin123!",
                 first_name="System",
                 last_name="Administrator",
-                role="admin"
+                role="admin",
             )
-            
-            if success:
+
+            if create_user_result["success"]:
                 return True, "Default admin user created successfully"
             else:
-                return False, f"Failed to create default admin: {message}"
-                
+                return (
+                    False,
+                    f"Failed to create default admin: {create_user_result['message']}",
+                )
+
         except Exception as e:
             return False, f"Error creating default admin: {str(e)}"
-    
+
     def get_user_settings(self, user_id: str) -> Optional[UserSettings]:
         """
         Get user settings
@@ -592,22 +705,24 @@ class UserService:
         """
         try:
             result = self.db.query(
-                "SELECT * FROM UserSettings WHERE user_id = $user_id",
-                {"user_id": user_id}
+                "SELECT * FROM user_settings WHERE user_id = $user_id",
+                {"user_id": user_id},
             )
-            
+
             if result and len(result) > 0:
                 settings_data = result[0]
                 return UserSettings.from_dict(settings_data)
-            
+
             # If no settings exist, create default settings
             return UserSettings(user_id=user_id)
-            
+
         except Exception as e:
             logger.error(f"Error getting user settings: {e}")
             return None
-    
-    def save_user_settings(self, user_id: str, settings: UserSettings) -> tuple[bool, str]:
+
+    def save_user_settings(
+        self, user_id: str, settings: UserSettings
+    ) -> tuple[bool, str]:
         """
         Save user settings
 
@@ -617,21 +732,23 @@ class UserService:
         """
         try:
             logger.debug(f"Saving settings for user: {user_id}")
-            
+
             # Check if settings already exist
             existing_settings = self.get_user_settings(user_id)
-            logger.debug(f"Existing settings: {existing_settings.id if existing_settings else 'None'}")
-            
+            logger.debug(
+                f"Existing settings: {existing_settings.id if existing_settings else 'None'}"
+            )
+
             if existing_settings and existing_settings.id:
                 # Update existing settings
                 logger.debug(f"Updating existing settings: {existing_settings.id}")
-                
+
                 # Construct the record ID properly
-                if existing_settings.id.startswith('UserSettings:'):
+                if existing_settings.id.startswith("UserSettings:"):
                     record_id = existing_settings.id
                 else:
                     record_id = f"UserSettings:{existing_settings.id}"
-                
+
                 logger.debug(f"Using record ID: {record_id}")
                 result = self.db.update(record_id, settings.to_dict())
                 logger.debug(f"Update result: {result}")
@@ -644,19 +761,19 @@ class UserService:
                     return False, "Failed to update settings"
             else:
                 # Create new settings
-                logger.debug(f"Creating new settings")
-                result = self.db.create('UserSettings', settings.to_dict())
+                logger.debug("Creating new settings")
+                result = self.db.create("user_settings", settings.to_dict())
                 logger.debug(f"Create result: {result}")
-                if result and result.get('id'):
-                    settings.id = result['id']
+                if result and result.get("id"):
+                    settings.id = result["id"]
                     return True, "Settings created successfully"
                 else:
                     return False, "Failed to create settings"
-                    
+
         except Exception as e:
             logger.error(f"Error saving settings: {e}")
             return False, f"Error saving settings: {str(e)}"
-    
+
     def update_openai_api_key(self, user_id: str, api_key: str) -> tuple[bool, str]:
         """
         Update user's OpenAI API key
@@ -672,32 +789,32 @@ class UserService:
                 settings = self.get_user_settings(user_id)
                 if not settings:
                     settings = UserSettings(user_id=user_id)
-                
+
                 # Clear API key
                 settings.set_openai_api_key("")
-                
+
                 # Save settings
                 return self.save_user_settings(user_id, settings)
-            
+
             # Validate API key if not empty
             valid, msg = UserSettings.validate_openai_api_key(api_key)
             if not valid:
                 return False, msg
-            
+
             # Get or create settings
             settings = self.get_user_settings(user_id)
             if not settings:
                 settings = UserSettings(user_id=user_id)
-            
+
             # Update API key
             settings.set_openai_api_key(api_key)
-            
+
             # Save settings
             return self.save_user_settings(user_id, settings)
-            
+
         except Exception as e:
             return False, f"Error updating API key: {str(e)}"
-    
+
     def get_openai_api_key(self, user_id: str) -> str:
         """
         Get user's decrypted OpenAI API key
@@ -713,7 +830,7 @@ class UserService:
         except Exception as e:
             logger.error(f"Error getting API key: {e}")
             return ""
-    
+
     def has_openai_api_key(self, user_id: str) -> bool:
         """
         Check if user has a valid OpenAI API key
@@ -729,7 +846,7 @@ class UserService:
         except Exception as e:
             logger.error(f"Error checking API key: {e}")
             return False
-    
+
     def update_optimal_api_key(self, user_id: str, api_key: str) -> tuple[bool, str]:
         """
         Update user's Optimal API key
@@ -745,32 +862,32 @@ class UserService:
                 settings = self.get_user_settings(user_id)
                 if not settings:
                     settings = UserSettings(user_id=user_id)
-                
+
                 # Clear API key
                 settings.set_optimal_api_key("")
-                
+
                 # Save settings
                 return self.save_user_settings(user_id, settings)
-            
+
             # Validate API key if not empty
             valid, msg = UserSettings.validate_optimal_api_key(api_key)
             if not valid:
                 return False, msg
-            
+
             # Get or create settings
             settings = self.get_user_settings(user_id)
             if not settings:
                 settings = UserSettings(user_id=user_id)
-            
+
             # Update API key
             settings.set_optimal_api_key(api_key)
-            
+
             # Save settings
             return self.save_user_settings(user_id, settings)
-            
+
         except Exception as e:
             return False, f"Error updating Optimal API key: {str(e)}"
-    
+
     def get_optimal_api_key(self, user_id: str) -> str:
         """
         Get user's decrypted Optimal API key
@@ -786,7 +903,7 @@ class UserService:
         except Exception as e:
             logger.error(f"Error getting Optimal API key: {e}")
             return ""
-    
+
     def has_optimal_api_key(self, user_id: str) -> bool:
         """
         Check if user has a valid Optimal API key

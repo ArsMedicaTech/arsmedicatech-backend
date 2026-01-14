@@ -1,6 +1,7 @@
 """
 LLM Chat Model
 """
+
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -11,13 +12,14 @@ class LLMChat:
     """
     Represents a chat session with an LLM (Large Language Model) assistant.
     """
+
     def __init__(
-            self,
-            user_id: UserID,
-            assistant_id: str = "ai-assistant",
-            messages: Optional[List[Dict[str, Any]]] = None,
-            created_at: Optional[str] = None,
-            id: Optional[str] = None
+        self,
+        user_id: UserID,
+        assistant_id: str = "ai-assistant",
+        messages: Optional[List[Dict[str, Any]]] = None,
+        created_at: Optional[str] = None,
+        id: Optional[str] = None,
     ) -> None:
         """
         Initializes an LLMChat instance.
@@ -43,31 +45,33 @@ class LLMChat:
             "user_id": self.user_id,
             "assistant_id": self.assistant_id,
             "messages": self.messages,
-            "created_at": self.created_at
+            "created_at": self.created_at,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'LLMChat':
+    def from_dict(cls, data: Dict[str, Any]) -> "LLMChat":
         """
         Creates an LLMChat instance from a dictionary.
         :param data: Dictionary containing chat details. Expected keys are 'user_id', 'assistant_id', 'messages', 'created_at', and 'id'.
         :return: LLMChat instance
         """
-        chat_id = data.get('id')
-        if hasattr(chat_id, '__str__'):
+        chat_id = data.get("id")
+        if hasattr(chat_id, "__str__"):
             chat_id = str(chat_id)
-        user_id = data.get('user_id')
+        user_id = data.get("user_id")
         if user_id is None:
             raise ValueError("user_id is required and cannot be None")
         return cls(
             user_id=user_id,
-            assistant_id=data.get('assistant_id', 'ai-assistant'),
-            messages=data.get('messages', []),
-            created_at=data.get('created_at'),
-            id=chat_id
+            assistant_id=data.get("assistant_id", "ai-assistant"),
+            messages=data.get("messages", []),
+            created_at=data.get("created_at"),
+            id=chat_id,
         )
 
-    def add_message(self, sender: str, text: str, used_tools: Optional[List[str]] = None) -> None:
+    def add_message(
+        self, sender: str, text: str, used_tools: Optional[List[str]] = None
+    ) -> None:
         """
         Adds a new message to the chat session.
         :param sender: The sender of the message (e.g., 'user' or 'assistant').
@@ -78,8 +82,23 @@ class LLMChat:
         message: Dict[str, Any] = {
             "sender": sender,
             "text": text,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if used_tools:
             message["usedTools"] = used_tools
-        self.messages.append(message) 
+        self.messages.append(message)
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the llm chat table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE llm_chat SCHEMAFULL;
+            DEFINE FIELD user_id ON llm_chat TYPE record<user>;
+            DEFINE FIELD assistant_id ON llm_chat TYPE string;
+            DEFINE FIELD messages ON llm_chat TYPE array<object>;
+            DEFINE FIELD created_at ON llm_chat TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON llm_chat TYPE datetime VALUE time::now();
+        """

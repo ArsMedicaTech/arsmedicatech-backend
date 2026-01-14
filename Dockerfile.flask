@@ -9,6 +9,9 @@ WORKDIR /app
 # This is for whisper for the audio transcription Celery task...
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
+# Install git for nanoservices requirement.
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
 # Install MariaDB connector
 RUN apt-get update && apt-get install -y \
     default-libmysqlclient-dev \

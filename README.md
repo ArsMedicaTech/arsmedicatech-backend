@@ -9,3 +9,13 @@ This repository is our central Python Flask backend which coordinates with vario
 There is also the [Nanoservices repo](https://github.com/ArsMedicaTech/arsmedicatech-nanoservices) for various shared classes and functions that are used by both this repo and the MCP layer, and in the future, perhaps others.
 
 There is also a rich ecosystem of microservices about which more can be gleaned from reading the [README for our central repository](https://github.com/ArsMedicaTech/arsmedicatech) or by perusing the other repositories in this organization.
+
+## Usage
+
+Add the .env and mcp_config based off .env.example and mcp_config.example.json
+
+run with:
+docker run --name arsmedicatech-backend --rm --pull always -p 8700:8000 -v ./mydata:/mydata -w /mydata surrealdb/surrealdb:latest-dev  start --user root --pass root
+
+.\.venv\Scripts\activate
+python app.py --host=0.0.0.0 --port=3123

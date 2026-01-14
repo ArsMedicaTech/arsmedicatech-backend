@@ -1,15 +1,19 @@
 """
 CRUD operations for Patient model.
 """
+
 from typing import Any, Dict, List, Union, cast
 
-from lib.db.surreal import AsyncDbController, DbController
+from amt_nano.db.surreal import AsyncDbController, DbController
+
 from lib.models.patient.common import PatientDict
 from lib.models.patient.patient_model import Patient
 from settings import logger
 
 
-def store_patient(db: Union[DbController, AsyncDbController], patient: Patient) -> Dict[str, Any]:
+def store_patient(
+    db: Union[DbController, AsyncDbController], patient: Patient
+) -> Dict[str, Any]:
     """
     Stores a Patient instance in SurrealDB as patient:<demographic_no>.
 
@@ -28,7 +32,7 @@ def store_patient(db: Union[DbController, AsyncDbController], patient: Patient) 
         "phone": patient.phone,
         "email": patient.email,
         # location could be stored as a separate field or nested object up to you.
-        "location": list(patient.location) if patient.location is not None else []
+        "location": list(patient.location) if patient.location is not None else [],
     }
 
     query = f"CREATE {record_id} CONTENT $data"
@@ -39,10 +43,11 @@ def store_patient(db: Union[DbController, AsyncDbController], patient: Patient) 
     db.connect()
     result = db.query(query, params)
 
-    logger.debug('resulttttsasfsdgsd', result)
+    logger.debug("resulttttsasfsdgsd", result)
 
     # If result is a coroutine, await it
     import asyncio
+
     if asyncio.iscoroutine(result):
         result = asyncio.run(result)
 
@@ -65,19 +70,21 @@ def serialize_patient(patient: Any) -> PatientDict:
     """
     # Handle case where patient is not a dict
     if not isinstance(patient, dict):
-        if hasattr(patient, '__str__'):
+        if hasattr(patient, "__str__"):
             return cast(PatientDict, {"demographic_no": str(patient)})
         else:
             return cast(PatientDict, {})
-    
+
     # Create a copy to avoid modifying the original
     result: Dict[str, Any] = {}
-    
+
     # convert patient['id'] to string...
     for key, value in patient.items():
-        logger.debug('key', key, value)
+        logger.debug("key", key, value)
         if isinstance(value, list):
-            result[key] = [str(item) if isinstance(item, int) else item for item in value]
+            result[key] = [
+                str(item) if isinstance(item, int) else item for item in value
+            ]
         elif isinstance(value, int):
             result[key] = str(value)
         else:
@@ -95,23 +102,26 @@ def get_patient_by_id(patient_id: str) -> PatientDict:
     logger.debug(f"Getting patient by ID: {patient_id}")
     db = DbController()
     db.connect()
-    
+
     try:
         # Use a direct query instead of select method
         query = "SELECT * FROM patient WHERE demographic_no = $patient_id"
         params = {"patient_id": patient_id}
-        
+
         logger.debug(f"Executing query: {query} with params: {params}")
         result = db.query(query, params)
         logger.debug(f"Query result: {result}")
-        
+
         # Handle the result structure
         if result and len(result) > 0:
             # Extract the first (and should be only) patient
             patient_data = result[0]
-            if 'result' in patient_data:
-                patient_data = cast(Dict[str, Any], patient_data['result'][0] if patient_data['result'] else None)
-            
+            if "result" in patient_data:
+                patient_data = cast(
+                    Dict[str, Any],
+                    patient_data["result"][0] if patient_data["result"] else None,
+                )
+
             if patient_data:
                 serialized_result = serialize_patient(patient_data)
                 logger.debug(f"Serialized result: {serialized_result}")
@@ -140,22 +150,40 @@ def update_patient(patient_id: str, patient_data: Dict[str, Any]) -> PatientDict
     logger.debug(f"Updating patient with ID: {patient_id}")
     db = DbController()
     db.connect()
-    
+
     try:
         # Map 'dob' to 'date_of_birth' if present
-        if 'dob' in patient_data:
-            patient_data['date_of_birth'] = patient_data.pop('dob')
+        if "dob" in patient_data:
+            patient_data["date_of_birth"] = patient_data.pop("dob")
 
         # List of valid patient fields
         valid_fields = {
-            "first_name", "last_name", "date_of_birth", "sex", "phone", "email", "location",
-            "address", "city", "province", "postalCode", "insuranceProvider", "insuranceNumber",
-            "medicalConditions", "medications", "allergies", "reasonForVisit", "symptoms",
-            "symptomOnset", "consent"
+            "first_name",
+            "last_name",
+            "date_of_birth",
+            "sex",
+            "phone",
+            "email",
+            "location",
+            "address",
+            "city",
+            "province",
+            "postalCode",
+            "insuranceProvider",
+            "insuranceNumber",
+            "medicalConditions",
+            "medications",
+            "allergies",
+            "reasonForVisit",
+            "symptoms",
+            "symptomOnset",
+            "consent",
         }
 
         # Only include fields present in patient_data and valid for the patient
-        update_data = {k: v for k, v in patient_data.items() if k in valid_fields and v is not None}
+        update_data = {
+            k: v for k, v in patient_data.items() if k in valid_fields and v is not None
+        }
 
         if not update_data:
             logger.debug("No valid fields to update.")
@@ -168,13 +196,16 @@ def update_patient(patient_id: str, patient_data: Dict[str, Any]) -> PatientDict
         logger.debug(f"Executing update query: {query} with params: {params}")
         result = db.query(query, params)
         logger.debug(f"Update result: {result}")
-        
+
         # Handle the result structure
         if result and len(result) > 0:
             patient_data = result[0]
-            if 'result' in patient_data:
-                patient_data = cast(Dict[str, Any], patient_data['result'][0] if patient_data['result'] else None)
-            
+            if "result" in patient_data:
+                patient_data = cast(
+                    Dict[str, Any],
+                    patient_data["result"][0] if patient_data["result"] else None,
+                )
+
             if patient_data:
                 serialized_result = serialize_patient(patient_data)
                 logger.debug(f"Serialized update result: {serialized_result}")
@@ -202,22 +233,24 @@ def delete_patient(patient_id: str) -> bool:
     logger.debug(f"Deleting patient with ID: {patient_id}")
     db = DbController()
     db.connect()
-    
+
     try:
         # Use a direct DELETE query
         query = "DELETE FROM patient WHERE demographic_no = $patient_id"
         params = {"patient_id": patient_id}
-        
+
         logger.debug(f"Executing delete query: {query} with params: {params}")
         result = db.query(query, params)
         logger.debug(f"Delete result: {result}")
-        
+
         # Check if the delete was successful
         if result and len(result) > 0:
             # Check if any records were actually deleted
             delete_info = result[0]
-            if 'result' in delete_info:
-                deleted_count = len(delete_info['result']) if delete_info['result'] else 0
+            if "result" in delete_info:
+                deleted_count = (
+                    len(delete_info["result"]) if delete_info["result"] else 0
+                )
                 logger.debug(f"Deleted {deleted_count} records")
                 return deleted_count > 0
             else:
@@ -243,21 +276,25 @@ def create_patient(patient_data: Dict[str, Any]) -> PatientDict:
     logger.debug(f"Creating patient with data: {patient_data}")
     db = DbController()
     db.connect()
-    
+
     try:
         # Generate a new demographic_no if not provided
         if not patient_data.get("demographic_no"):
             logger.debug("No demographic_no provided, generating new one...")
             # Get the highest existing demographic_no and increment
-            results = db.select_many('patient')
+            results = db.select_many("patient")
             if results and len(results) > 0:
-                existing_ids = [int(p.get('demographic_no', 0)) for p in results if p.get('demographic_no')]
+                existing_ids = [
+                    int(p.get("demographic_no", 0))
+                    for p in results
+                    if p.get("demographic_no")
+                ]
                 new_id = max(existing_ids) + 1 if existing_ids else 1000
             else:
                 new_id = 1000
             patient_data["demographic_no"] = str(new_id)
             logger.debug(f"Generated demographic_no: {new_id}")
-        
+
         # Create Patient object
         loc = patient_data.get("location", [])
 
@@ -269,25 +306,25 @@ def create_patient(patient_data: Dict[str, Any]) -> PatientDict:
             location=tuple(loc),
             sex=patient_data.get("sex"),
             phone=patient_data.get("phone"),
-            email=patient_data.get("email")
+            email=patient_data.get("email"),
         )
-        
+
         logger.debug(f"Created Patient object: {patient}")
         result = store_patient(db, patient)
         logger.debug(f"Store patient result: {result}")
-        
+
         # Handle different result structures
         if result and isinstance(result, list) and len(result) > 0:
             first_result = result[0]
-            if isinstance(first_result, dict) and 'result' in first_result:
-                final_result = serialize_patient(first_result['result'])
+            if isinstance(first_result, dict) and "result" in first_result:
+                final_result = serialize_patient(first_result["result"])
             else:
                 final_result = serialize_patient(first_result)
         elif result and isinstance(result, dict):
             final_result = serialize_patient(result)
         else:
             final_result = cast(PatientDict, {})
-        
+
         logger.debug(f"Final patient result: {final_result}")
         return final_result
     except Exception as e:
@@ -299,6 +336,7 @@ def create_patient(patient_data: Dict[str, Any]) -> PatientDict:
 
 # TODO: Implement pagination.
 
+
 def get_all_patients() -> List[PatientDict]:
     """
     Get all patients from the database
@@ -307,24 +345,26 @@ def get_all_patients() -> List[PatientDict]:
     """
     db = DbController()
     db.connect()
-    
+
     try:
         logger.debug("Getting all patients from database...")
-        results = db.select_many('patient')
+        results = db.select_many("patient")
         logger.debug(f"Raw results: {results}")
-        
+
         # Handle different result structures
         if results and len(results) > 0:
             # If the first result has a 'result' key, extract the actual data
-            if 'result' in results[0]:
-                patients = results[0]['result']
+            if "result" in results[0]:
+                patients = results[0]["result"]
             else:
                 patients = results
-            
+
             logger.debug(f"Processed patients: {patients}")
-            
+
             if isinstance(patients, list):
-                serialized_patients = [serialize_patient(patient) for patient in patients]
+                serialized_patients = [
+                    serialize_patient(patient) for patient in patients
+                ]
                 logger.debug(f"Serialized patients: {serialized_patients}")
                 return serialized_patients
             else:
