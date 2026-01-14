@@ -20,6 +20,6 @@ config.py
 
 
 mcp_config.json
-
+mcp_config_prod.json
 
 debug_api_key.txt
