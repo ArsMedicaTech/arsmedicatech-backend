@@ -176,6 +176,20 @@ sentry_sdk.init(
 )
 
 app = Flask(__name__)
+
+import tempfile
+
+app.config["SESSION_FILE_DIR"] = (
+    tempfile.gettempdir()
+)  # Or a persistent K8s volume path
+
+if not os.path.exists(app.config["SESSION_FILE_DIR"]):
+    os.makedirs(app.config["SESSION_FILE_DIR"])
+
+app.config["SESSION_PERMANENT"] = True
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=1)
+
+
 CORS(
     app,
     resources={
@@ -184,6 +198,7 @@ CORS(
             "supports_credentials": True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
+            "expose_headers": ["Set-Cookie"],
         }
     },
 )
@@ -199,7 +214,8 @@ app.config["SESSION_TYPE"] = "filesystem"
 if DEBUG:
     app.config.update(
         SESSION_COOKIE_SECURE=False,  # False only on http://localhost
-        # SESSION_COOKIE_SAMESITE="None",
+        # SameSite=None requires Secure=True, which doesn't work with http://localhost
+        # Use Lax for local development - it works for same-site redirects
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_DOMAIN=None,  # No domain set for local development
     )
@@ -208,7 +224,12 @@ else:
     app.config.update(
         SESSION_COOKIE_SECURE=True,  # False only on http://localhost
         SESSION_COOKIE_SAMESITE="None",  # 'Lax' if SPA and API are same origin
-        SESSION_COOKIE_DOMAIN=".arsmedicatech.com",  # leading dot, covers sub-domains
+        # SESSION_COOKIE_DOMAIN=".arsmedicatech.com",  # leading dot, covers sub-domains
+        SESSION_COOKIE_DOMAIN=None,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_PATH="/",
+        # This is required for cross-site cookies
+        SESSION_COOKIE_PARTITIONED=True,
     )
 
 
