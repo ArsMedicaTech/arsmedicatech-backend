@@ -907,6 +907,28 @@ def check_users_exist() -> Tuple[Response, int]:
     return check_users_exist_route()
 
 
+@app.route("/api/users/update", methods=["PUT"])
+@require_auth
+def update_user() -> Tuple[Response, int]:
+    """
+    Update attributes of a user.
+    :return: Response object with update status.
+    """
+    user_service = UserService()
+    user_service.connect()
+    user_id = session.get("user_id")
+    updates = request.json
+
+    update_result = user_service.update_user(user_id, updates)
+
+    user_service.close()
+
+    if update_result["success"]:
+        return jsonify({"message": "User updated successfully"}), 200
+    else:
+        return jsonify({"error": update_result["message"]}), 400
+
+
 @app.route("/api/debug/session", methods=["GET"])
 def debug_session() -> Tuple[Response, int]:
     """
