@@ -2,6 +2,7 @@
 Keycloak Service for user registration via Admin API.
 """
 
+import secrets
 from typing import Any, Dict, Optional, Tuple
 
 import requests
@@ -212,3 +213,11 @@ class KeycloakService:
         except requests.exceptions.RequestException as e:
             logger.error(f"Error searching for user in Keycloak: {e}")
             return None
+
+    def _generate_session_token(self) -> str:
+        """
+        Generate a secure session token for Keycloak users.
+
+        :return: A secure random token string
+        """
+        return secrets.token_urlsafe(32)
