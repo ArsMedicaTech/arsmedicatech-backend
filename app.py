@@ -34,6 +34,7 @@ from flask import (
 )
 from flask_cors import CORS
 from prometheus_flask_exporter import PrometheusMetrics
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.wrappers.response import Response as BaseResponse
 
 from lib.dummy_data import DUMMY_CONVERSATIONS
@@ -186,6 +187,9 @@ CORS(
         }
     },
 )
+
+# This tells Flask to trust the headers set by the Ingress/Reverse Proxy
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 app.secret_key = FLASK_SECRET_KEY
 
