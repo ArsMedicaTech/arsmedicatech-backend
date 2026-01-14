@@ -5,7 +5,9 @@ Main application file for the Flask server.
 import json
 import os
 import re
+import secrets
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 from urllib.parse import quote, urlencode
@@ -245,6 +247,33 @@ oauth.register(
 )
 
 
+@app.after_request
+def add_cookie_attributes(response):
+    print("After request - adjusting cookie attributes")
+
+    # Get all Set-Cookie headers
+    cookies = response.headers.getlist("Set-Cookie")
+    if not cookies:
+        print("No Set-Cookie headers found")
+        return response
+
+    response.headers.remove("Set-Cookie")
+    for cookie in cookies:
+        # Check for your specific session cookie name
+        if "amt_session" in cookie or "session" in cookie:
+            print(f"Adjusting cookie: {cookie}")
+            # Clean up any existing attributes to avoid duplicates
+            # Then force the modern 2026 cross-site requirements
+            base_cookie = cookie.split(";")[0]
+            new_cookie = (
+                f"{base_cookie}; Secure; HttpOnly; SameSite=None; Partitioned; Path=/"
+            )
+            response.headers.add("Set-Cookie", new_cookie)
+        else:
+            response.headers.add("Set-Cookie", cookie)
+    return response
+
+
 @app.route("/api/debug/session_v2")
 def debug_session_v2():
     return jsonify(
@@ -445,13 +474,27 @@ def register() -> Tuple[Response, int]:
     return register_route()
 
 
+def clear_keycloak_states():
+    """Helper to remove any stale OIDC state keys from the session."""
+    for key in list(session.keys()):
+        if key.startswith("_state_keycloak_"):
+            session.pop(key, None)
+
+
 @app.route("/api/auth/register-page", methods=["GET"])
 def register_page():
     """
     Redirect to Keycloak's registration page for browser-based registration.
     This is different from /api/auth/register which is for API-based registration.
     """
+    # 1. Clear old states to prevent Mismatching State errors
+    clear_keycloak_states()
+
     redirect_uri = url_for("authorize", _external=True)
+
+    # Ensure session is saved before redirecting (authlib stores OAuth state in session)
+    session.permanent = True
+    session.modified = True
 
     # Passing kc_action="register" tells Keycloak's authorize endpoint
     # to jump directly to the registration form instead of the login form.
@@ -464,7 +507,15 @@ def login() -> Tuple[Response, int]:
     Login endpoint for users.
     :return: Response object with login status.
     """
+    # 1. Clear old states to prevent Mismatching State errors
+    clear_keycloak_states()
+
     redirect_uri = url_for("authorize", _external=True)
+
+    # Ensure session is saved before redirecting (authlib stores OAuth state in session)
+    session.permanent = True
+    session.modified = True
+
     return oauth.keycloak.authorize_redirect(redirect_uri)
 
 
@@ -475,8 +526,32 @@ def authorize():
     This is called after a user authenticates or registers via Keycloak.
     """
     try:
+        # Log session state for debugging
+        logger.debug(
+            f"Session keys before authorize_access_token: {list(session.keys())}"
+        )
+        logger.debug(f"Session ID: {session.get('_id', 'no _id')}")
+
         # This handles the callback and verifies the JWT signature
-        token = oauth.keycloak.authorize_access_token()
+        # authlib stores the OAuth state in the session, so the session must persist
+        try:
+            # 1. Try to get the token
+            token = oauth.keycloak.authorize_access_token()
+        except Exception as e:
+            # 2. If it expired, check if we already have a user logged in
+            # (This handles the "Double Redirect" refresh issue)
+            if "authentication_expired" in str(e) or "already_used" in str(e):
+                logger.warning(
+                    "OAuth code already used or expired. Checking existing session..."
+                )
+                if "user_id" in session:
+                    return redirect(FRONTEND_REDIRECT)
+                # If no session exists, we must force a re-login
+                return redirect(url_for("login", prompt="login"))
+
+            logger.error(f"Handshake failed: {e}")
+            return redirect(f"{FRONTEND_REDIRECT}?error=auth_failed")
+
         user_info = token.get("userinfo")
 
         if not user_info:
@@ -589,20 +664,151 @@ def authorize():
                     f"Created new Keycloak user in SurrealDB: {existing_user.id}"
                 )
 
+            # Create session token and store in database
+            from lib.services.keycloak_service import KeycloakService
+
+            keycloak_service = KeycloakService()
+            session_token = keycloak_service._generate_session_token()
+
+            user_session = user_service.create_session(
+                user_id=existing_user.id,
+                username=existing_user.username,
+                role=existing_user.role,
+                session_token=session_token,
+            )
+
+            if not user_session:
+                logger.error("Failed to create user session")
+                return redirect(f"{FRONTEND_REDIRECT}?error=session_creation_failed")
+
             # Store user info in session
             session["user"] = user_info
             session["user_id"] = existing_user.id
             session["username"] = existing_user.username
             session["role"] = existing_user.role
+            session["auth_token"] = session_token
+            session.modified = True
 
+            logger.debug(
+                f"Keycloak authentication successful for user: {existing_user.username}"
+            )
+
+            # .....................
+
+            ott = secrets.token_urlsafe(32)
+
+            user_service.db.query(
+                "CREATE ott_exchange SET id = $ott, session_token = $st, expires = time::now() + 5m",
+                {"ott": ott, "st": session_token},
+            )
         finally:
             user_service.close()
 
-        return redirect(FRONTEND_REDIRECT)
+        return redirect(f"{FRONTEND_REDIRECT}?ott={ott}")
 
     except Exception as e:
         logger.error(f"Error in Keycloak authorize callback: {e}", exc_info=True)
         return redirect(f"{FRONTEND_REDIRECT}?error=auth_error&message={str(e)}")
+
+
+@app.route("/api/auth/exchange", methods=["POST"])
+def exchange_token():
+    """
+    Exchange a One-Time Token (OTT) for a full session.
+    This is called by the frontend after a successful redirect.
+    """
+    data = request.json
+    ott = data.get("ott")
+
+    # 1. Check if the user ALREADY has a session cookie from a parallel request
+    if session.get("user_id"):
+        print(f"DEBUG EXCHANGE: User already has a session. Session: {dict(session)}")
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "user": {"id": session["user_id"], "username": session["username"]},
+                    "token": session.get("auth_token"),
+                }
+            ),
+            200,
+        )
+
+    if not ott:
+        print("DEBUG EXCHANGE: Missing OTT in request")
+        return jsonify({"success": False, "message": "Missing OTT"}), 400
+
+    user_service = UserService()
+    user_service.connect()
+    try:
+        # 1. Find and consume the OTT (DELETE it so it can't be reused)
+        # We check the 'expires' field to ensure it's still fresh
+        result = user_service.db.query(
+            "DELETE type::thing('ott_exchange', $ott) WHERE expires > time::now() RETURN BEFORE",
+            {"ott": ott},
+        )
+
+        if not result or not result[0]:
+            print("DEBUG EXCHANGE: Invalid or expired OTT")
+            return (
+                jsonify({"success": False, "message": "Invalid or expired token"}),
+                401,
+            )
+
+        session_token = result[0]["session_token"]
+
+        # 2. Retrieve the actual session data from SurrealDB
+        user_session = user_service.validate_session(session_token)
+        if not user_session:
+            print("DEBUG EXCHANGE: Session not found for token")
+            return jsonify({"success": False, "message": "Session not found"}), 401
+
+        # 3. SET THE FLASK SESSION
+        # This is the "Magic" moment. Because this is a direct POST from Flutter,
+        # the browser treats the Set-Cookie header as a first-party action.
+        session["user_id"] = user_session.user_id
+        session["username"] = user_session.username
+        session["role"] = user_session.role
+        session["auth_token"] = session_token
+        session.permanent = True
+        session.modified = True
+
+        print(f"DEBUG EXCHANGE: Session content after set: {dict(session)}")
+        print(f"DEBUG EXCHANGE: Session modified flag: {session.modified}")
+
+        response = jsonify(
+            {
+                "success": True,
+                "user": {
+                    "id": user_session.user_id,
+                    "username": user_session.username,
+                    "role": user_session.role,
+                },
+                "token": session_token,
+            }
+        )
+
+        # MANUALLY set the cookie on the response object itself
+        # This bypasses the automatic session-handling logic that is failing you
+        response.set_cookie(
+            "amt_session",
+            value=session_token,  # Or your specific session identifier
+            max_age=86400,
+            path="/",
+            domain=None,
+            secure=True,
+            httponly=True,
+            samesite="None",
+        )
+
+        print(f"DEBUG RESPONSE: Headers before return: {response.headers}")
+
+        return (
+            response,
+            200,
+        )
+    finally:
+        user_service.close()
 
 
 @app.route("/api/auth/logout", methods=["POST"])
