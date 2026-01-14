@@ -239,6 +239,7 @@ class UserService:
                 auth_provider=auth_provider,
                 external_id=external_id,
                 external_data=external_data,
+                is_first_time=True,
             )
 
             # Save to database

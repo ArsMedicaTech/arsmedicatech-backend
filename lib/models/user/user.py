@@ -42,6 +42,7 @@ class User:
         auth_provider: AuthProvider = "local",
         external_id: Optional[str] = None,
         external_data: Optional[Dict[str, Any]] = None,
+        is_first_time: Optional[bool] = False,
     ) -> None:
         """
         Initialize a User object
@@ -67,6 +68,7 @@ class User:
         :param auth_provider: Authentication provider (local, cognito, loginradius, keycloak)
         :param external_id: External user ID from OAuth provider
         :param external_data: Additional data from OAuth provider
+        :param is_first_time: Indicates if it's the user's first time logging in
         """
         self.id = id
         self.username = username
@@ -88,6 +90,7 @@ class User:
         self.auth_provider = auth_provider
         self.external_id = external_id
         self.external_data = external_data or {}
+        self.is_first_time = is_first_time
 
         # Hash password if provided
         self.password_hash: Optional[str] = None
@@ -122,6 +125,7 @@ class User:
             "auth_provider": self.auth_provider,
             "external_id": self.external_id,
             "external_data": self.external_data,
+            "is_first_time": self.is_first_time,
         }
 
         # Only include id if it's not None (let SurrealDB generate it for new records)
