@@ -1747,6 +1747,23 @@ def get_administrators(org_id: str) -> Tuple[Response, int]:
     return get_administrators_route(org_id)
 
 
+@app.route("/api/ddx", methods=["POST"])
+def ddx_suggest() -> Tuple[Response, int]:
+    """
+    Suggest differential diagnoses based on the provided prompt and details.
+    :return: Response object with suggested differential diagnoses.
+    """
+    data = request.json
+    prompt = data.get("prompt", "")
+    details = data.get("details", {})
+    n_suggestions = data.get("n_suggestions", 3)
+
+    context = DDXContext(prompt=prompt, details=details)
+    suggestions = suggest_ddx(context, n_suggestions)
+
+    return jsonify([suggestion.to_json() for suggestion in suggestions])
+
+
 @app.route("/healthz")
 def health_check() -> Tuple[Response, int]:
     """
