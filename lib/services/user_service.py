@@ -150,7 +150,7 @@ class UserService:
 
         session_data = user_session.to_dict()
         session_id = str(uuid.uuid4()).replace("-", "")
-        record_id = f"Session:{session_id}"
+        record_id = f"user_session:{session_id}"
 
         self.db.query(
             f"CREATE {record_id} SET user_id = $user_id, username = $username, role = $role, "
@@ -505,7 +505,7 @@ class UserService:
 
                 if session.is_expired():
                     # Remove expired session from database
-                    self.db.delete(f"Session:{session_data.get('id')}")
+                    self.db.delete(f"user_session:{session_data.get('id')}")
                     return None
 
                 # Add to memory cache
@@ -535,7 +535,7 @@ class UserService:
 
             if result and len(result) > 0:
                 session_data = result[0]
-                self.db.delete(f"Session:{session_data.get('id')}")
+                self.db.delete(f"user_session:{session_data.get('id')}")
                 return True
         except Exception as e:
             logger.debug(f"Error removing session from database: {e}")
@@ -549,7 +549,7 @@ class UserService:
         """
         try:
             logger.debug("Getting all users from database...")
-            results = self.db.select_many("User")
+            results = self.db.select_many("user")
             logger.debug(f"Raw results: {results}")
             users: List[User] = []
             for user_data in results:
