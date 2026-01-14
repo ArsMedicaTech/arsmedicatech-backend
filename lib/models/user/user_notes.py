@@ -1,36 +1,39 @@
 """
 User Notes model.
 """
+
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
+
+UserNoteTypes = Literal["public", "private"]
 
 
 class UserNote:
     """
     Model for user notes that can be private or shared
     """
-    
+
     def __init__(
-            self,
-            user_id: str,
-            title: str,
-            content: str,
-            note_type: str = "private",
-            tags: Optional[List[str]] = None,
-            date_created: Optional[str] = None,
-            date_updated: Optional[str] = None,
-            id: Optional[str] = None
+        self,
+        user_id: str,
+        title: str,
+        content: str,
+        note_type: UserNoteTypes = "private",
+        tags: Optional[List[str]] = None,
+        created_at: Optional[str] = None,
+        updated_at: Optional[str] = None,
+        id: Optional[str] = None,
     ) -> None:
         """
         Initialize a user note
-        
+
         :param user_id: ID of the user who owns this note
         :param title: Title of the note
         :param content: Markdown content of the note
         :param note_type: Type of note ("private" or "shared")
         :param tags: List of tags for the note
-        :param date_created: Creation timestamp
-        :param date_updated: Last update timestamp
+        :param created_at: Creation timestamp
+        :param updated_at: Last update timestamp
         :param id: Database record ID
         """
         self.user_id = user_id
@@ -38,12 +41,12 @@ class UserNote:
         self.content = content
         self.note_type = note_type
         self.tags = tags or []
-        self.date_created = date_created or datetime.now(timezone.utc).isoformat()
-        self.date_updated = date_updated or datetime.now(timezone.utc).isoformat()
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.updated_at = updated_at or datetime.now(timezone.utc)
         self.id = id
-    
+
     @staticmethod
-    def validate_note_type(note_type: str) -> tuple[bool, str]:
+    def validate_note_type(note_type: str) -> Tuple[bool, str]:
         """
         Validate note type
 
@@ -54,7 +57,7 @@ class UserNote:
         if note_type not in valid_types:
             return False, f"Note type must be one of: {', '.join(valid_types)}"
         return True, ""
-    
+
     @staticmethod
     def validate_title(title: str) -> tuple[bool, str]:
         """
@@ -70,7 +73,7 @@ class UserNote:
         if len(title) > 200:
             return False, "Title must be less than 200 characters"
         return True, ""
-    
+
     @staticmethod
     def validate_content(content: str) -> tuple[bool, str]:
         """
@@ -86,7 +89,7 @@ class UserNote:
         if len(content) > 10000:
             return False, "Content must be less than 10,000 characters"
         return True, ""
-    
+
     @staticmethod
     def validate_tags(tags: List[str]) -> tuple[bool, str]:
         """
@@ -100,9 +103,9 @@ class UserNote:
                 return False, "Tags cannot be empty"
             if len(tag) > 50:
                 return False, "Tags must be less than 50 characters"
-        
+
         return True, ""
-    
+
     def update_content(self, content: str) -> None:
         """
         Update note content and set updated timestamp
@@ -114,10 +117,10 @@ class UserNote:
         valid, msg = self.validate_content(content)
         if not valid:
             raise ValueError(msg)
-        
+
         self.content = content
         self.date_updated = datetime.now(timezone.utc).isoformat()
-    
+
     def update_title(self, title: str) -> None:
         """
         Update note title and set updated timestamp
@@ -129,11 +132,11 @@ class UserNote:
         valid, msg = self.validate_title(title)
         if not valid:
             raise ValueError(msg)
-        
+
         self.title = title
         self.date_updated = datetime.now(timezone.utc).isoformat()
-    
-    def update_note_type(self, note_type: str) -> None:
+
+    def update_note_type(self, note_type: UserNoteTypes) -> None:
         """
         Update note type and set updated timestamp
 
@@ -144,10 +147,10 @@ class UserNote:
         valid, msg = self.validate_note_type(note_type)
         if not valid:
             raise ValueError(msg)
-        
+
         self.note_type = note_type
         self.date_updated = datetime.now(timezone.utc).isoformat()
-    
+
     def update_tags(self, tags: List[str]) -> None:
         """
         Update note tags and set updated timestamp
@@ -159,10 +162,10 @@ class UserNote:
         valid, msg = self.validate_tags(tags)
         if not valid:
             raise ValueError(msg)
-        
+
         self.tags = tags
         self.date_updated = datetime.now(timezone.utc).isoformat()
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert user note to dictionary for database storage
@@ -170,17 +173,17 @@ class UserNote:
         :return: Dictionary representation of the user note
         """
         return {
-            'user_id': self.user_id,
-            'title': self.title,
-            'content': self.content,
-            'note_type': self.note_type,
-            'tags': self.tags,
-            'date_created': self.date_created,
-            'date_updated': self.date_updated
+            "user_id": self.user_id,
+            "title": self.title,
+            "content": self.content,
+            "note_type": self.note_type,
+            "tags": self.tags,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UserNote':
+    def from_dict(cls, data: Dict[str, Any]) -> "UserNote":
         """
         Create user note from dictionary
 
@@ -188,17 +191,44 @@ class UserNote:
         :return: UserNote object
         """
         # Convert RecordID to string if it exists
-        note_id = data.get('id')
-        if hasattr(note_id, '__str__'):
+        note_id = data.get("id")
+        if hasattr(note_id, "__str__"):
             note_id = str(note_id)
-        
+
         return cls(
-            user_id=str(data.get('user_id') or ""),
-            title=str(data.get('title') or ""),
-            content=str(data.get('content') or ""),
-            note_type=data.get('note_type', 'private'),
-            tags=data.get('tags', []),
-            date_created=data.get('date_created'),
-            date_updated=data.get('date_updated'),
-            id=note_id
+            user_id=str(data.get("user_id") or ""),
+            title=str(data.get("title") or ""),
+            content=str(data.get("content") or ""),
+            note_type=data.get("note_type", "private"),
+            tags=data.get("tags", []),
+            created_at=data.get("created_at"),
+            updated_at=data.get("updated_at"),
+            id=note_id,
         )
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the user notes table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+        DEFINE TABLE user_note SCHEMAFULL;
+
+        DEFINE FIELD user_id ON user_note TYPE record<user>;
+        DEFINE FIELD title ON user_note TYPE string;
+        DEFINE FIELD content ON user_note TYPE string;
+        DEFINE FIELD note_type ON user_note TYPE "public" | "private";
+        DEFINE FIELD tags ON user_note TYPE array;
+        DEFINE FIELD created_at ON user_note TYPE datetime VALUE time::now() READONLY;
+        DEFINE FIELD updated_at ON user_note TYPE datetime VALUE time::now();
+        
+        DEFINE INDEX idx_user_id ON user_note FIELDS user_id;
+        DEFINE INDEX idx_note_type ON user_note FIELDS note_type;
+        DEFINE INDEX idx_date_updated ON user_note FIELDS date_updated;
+        DEFINE TABLE user_note PERMISSIONS 
+        FOR select WHERE auth.id = user_id OR note_type = 'shared'
+        FOR create WHERE auth.id = user_id
+        FOR update WHERE auth.id = user_id
+        FOR delete WHERE auth.id = user_id;
+        """

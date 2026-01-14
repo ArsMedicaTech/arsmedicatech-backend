@@ -1,14 +1,16 @@
 """
 Domain events for webhook system
 """
+
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 
 @dataclass
 class AppointmentCreated:
     """Raised after an appointment is successfully created in the database."""
+
     appointment_id: str
     patient_id: str
     provider_id: str
@@ -22,6 +24,7 @@ class AppointmentCreated:
 @dataclass
 class AppointmentUpdated:
     """Raised after an appointment is successfully updated in the database."""
+
     appointment_id: str
     patient_id: str
     provider_id: str
@@ -37,6 +40,7 @@ class AppointmentUpdated:
 @dataclass
 class AppointmentCancelled:
     """Raised after an appointment is successfully cancelled."""
+
     appointment_id: str
     patient_id: str
     provider_id: str
@@ -47,6 +51,7 @@ class AppointmentCancelled:
 @dataclass
 class AppointmentConfirmed:
     """Raised after an appointment is successfully confirmed."""
+
     appointment_id: str
     patient_id: str
     provider_id: str
@@ -56,7 +61,8 @@ class AppointmentConfirmed:
 @dataclass
 class AppointmentCompleted:
     """Raised after an appointment is marked as completed."""
+
     appointment_id: str
     patient_id: str
     provider_id: str
-    occurred_at: datetime 
+    occurred_at: datetime

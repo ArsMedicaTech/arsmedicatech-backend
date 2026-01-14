@@ -1,21 +1,25 @@
 """
 Patient encounter CRUD operations.
 """
+
 import ast
 import json
 from typing import Any, Dict, List, Union, cast
 
+from amt_nano.db.surreal import AsyncDbController, DbController
 from surrealdb import RecordID  # type: ignore[import-untyped]
 
-from lib.db.surreal import AsyncDbController, DbController
 from lib.models.patient.common import EncounterDict, PatientDict
 from lib.models.patient.encounter_model import Encounter, SOAPNotes
-from lib.models.patient.patient_crud import \
-    serialize_patient  # type: ignore[import-untyped]
+from lib.models.patient.patient_crud import (
+    serialize_patient,  # type: ignore[import-untyped]
+)
 from settings import logger
 
 
-def store_encounter(db: Union[DbController, AsyncDbController], encounter: Encounter, patient_id: str) -> Dict[str, Any]:
+def store_encounter(
+    db: Union[DbController, AsyncDbController], encounter: Encounter, patient_id: str
+) -> Dict[str, Any]:
     """
     Stores an Encounter instance in SurrealDB as encounter:<note_id>,
     referencing the given patient_id (e.g., 'patient:12345').
@@ -25,30 +29,30 @@ def store_encounter(db: Union[DbController, AsyncDbController], encounter: Encou
     :param patient_id: Patient ID in the format 'patient:<demographic_no>'.
     :return: Result of the store operation.
     """
-    record_id = f"encounter:{encounter.note_id}"
+    record_id = f"encounter:{encounter.id}"
 
     # Handle note_text properly - store SOAP notes as objects, not strings
     note_text: Union[str, Dict[str, Any]] = ""
     note_type: str = "text"
-    
-    if encounter.soap_notes and hasattr(encounter.soap_notes, 'serialize'):
+
+    if encounter.soap_notes and hasattr(encounter.soap_notes, "serialize"):
         note_text = encounter.soap_notes.serialize()  # Store as object, not string
         note_type = "soap"
     else:
         note_text = encounter.additional_notes or ""
 
     content_data: Dict[str, Any] = {
-        "note_id": str(encounter.note_id),
-        "date_created": str(encounter.date_created),
+        "note_id": str(encounter.id),
+        "observation_date": str(encounter.observation_date),
         "provider_id": str(encounter.provider_id),
         "note_text": note_text,
         "note_type": note_type,
-        "diagnostic_codes": encounter.diagnostic_codes
+        "diagnostic_codes": encounter.diagnostic_codes,
     }
 
     query = f"CREATE {record_id}\n"
     set_query = f"""SET  note_id = $note_id,
-                        date_created = $date_created,
+                        observation_date = $observation_date,
                         provider_id = $provider_id,
                         note_text = $note_text,
                         note_type = $note_type,
@@ -61,10 +65,11 @@ def store_encounter(db: Union[DbController, AsyncDbController], encounter: Encou
     query += set_query
     result = db.query(query, params)
 
-    logger.debug('resultttt', result)
+    logger.debug("resultttt", result)
 
     # If result is a coroutine, await it
     import asyncio
+
     if asyncio.iscoroutine(result):
         result = asyncio.run(result)
 
@@ -85,49 +90,66 @@ def serialize_encounter(encounter: Any) -> EncounterDict:
     """
     # Handle case where encounter is not a dict
     if not isinstance(encounter, dict):
-        if hasattr(encounter, '__str__'):
-            return cast(EncounterDict, {"id": str(encounter.id), "note_id": str(encounter.note_id), "patient": str(encounter.patient)})
+        if hasattr(encounter, "__str__"):
+            return cast(
+                EncounterDict,
+                {
+                    "id": str(encounter.id),
+                    "note_id": str(encounter.note_id),
+                    "patient": str(encounter.patient),
+                },
+            )
         else:
             return cast(EncounterDict, {})
-    
+
     # Create a copy to avoid modifying the original
     result: Dict[str, Any] = {}
-    
+
     # convert encounter['id'] to string...
     for key, value in encounter.items():
-        logger.debug('key [encounter]', key, value)
+        logger.debug("key [encounter]", key, value)
         if isinstance(value, list):
-            result[key] = [str(item) if isinstance(item, int) else item for item in value]
+            result[key] = [
+                str(item) if isinstance(item, int) else item for item in value
+            ]
         elif isinstance(value, int):
             result[key] = str(value)
-        elif key == 'patient' and isinstance(value, dict):
+        elif key == "patient" and isinstance(value, dict):
             result[key] = serialize_patient(value)
-        elif key == 'patient' and isinstance(value, RecordID):
+        elif key == "patient" and isinstance(value, RecordID):
             result[key] = str(value)
-        elif key == 'id' and isinstance(value, RecordID):
+        elif key == "id" and isinstance(value, RecordID):
             result[key] = str(value)
-        elif key == 'note_text' and isinstance(value, str):
-            logger.debug(f"Processing note_text: {value[:100]}...")  # Log first 100 chars
+        elif key == "note_text" and isinstance(value, str):
+            logger.debug(
+                f"Processing note_text: {value[:100]}..."
+            )  # Log first 100 chars
             # Check if this is a JSON string or Python dict string that should be parsed as SOAP notes
             try:
                 # First try JSON parsing
                 parsed = json.loads(value)
-                if isinstance(parsed, dict) and all(k in parsed for k in ['subjective', 'objective', 'assessment', 'plan']):
+                if isinstance(parsed, dict) and all(
+                    k in parsed
+                    for k in ["subjective", "objective", "assessment", "plan"]
+                ):
                     logger.debug("Successfully parsed as JSON SOAP notes")
                     result[key] = parsed
-                    result['note_type'] = 'soap'
+                    result["note_type"] = "soap"
                     return result
             except (json.JSONDecodeError, TypeError) as e:
                 logger.debug(f"JSON parsing failed: {e}")
                 pass
-            
+
             # If JSON parsing failed, try Python literal_eval for Python dict strings
             try:
                 parsed = ast.literal_eval(value)
-                if isinstance(parsed, dict) and all(k in parsed for k in ['subjective', 'objective', 'assessment', 'plan']):
+                if isinstance(parsed, dict) and all(
+                    k in parsed
+                    for k in ["subjective", "objective", "assessment", "plan"]
+                ):
                     logger.debug("Successfully parsed as Python dict SOAP notes")
                     result[key] = parsed
-                    result['note_type'] = 'soap'
+                    result["note_type"] = "soap"
                 else:
                     logger.debug("Parsed as dict but not SOAP notes")
                     result[key] = value
@@ -137,6 +159,7 @@ def serialize_encounter(encounter: Any) -> EncounterDict:
         else:
             result[key] = value
     return cast(EncounterDict, result)
+
 
 def search_patient_history(search_term: str) -> List[PatientDict]:
     """
@@ -183,6 +206,7 @@ def search_patient_history(search_term: str) -> List[PatientDict]:
     finally:
         db.close()
 
+
 def search_encounter_history(search_term: str) -> List[EncounterDict]:
     """
     Performs a full-text search across all encounter notes.
@@ -192,9 +216,9 @@ def search_encounter_history(search_term: str) -> List[EncounterDict]:
     """
     db = DbController()
     db.connect()
-    
+
     logger.debug("ATTEMPTING SEARCH", search_term)
-    
+
     query = """
         SELECT
             search::score(0) AS score,
@@ -233,24 +257,26 @@ def get_all_encounters() -> List[EncounterDict]:
     """
     db = DbController()
     db.connect()
-    
+
     try:
         logger.debug("Getting all encounters from database...")
-        results = db.select_many('encounter')
+        results = db.select_many("encounter")
         logger.debug(f"Raw encounter results: {results}")
-        
+
         # Handle different result structures
         if results and len(results) > 0:
             # If the first result has a 'result' key, extract the actual data
-            if 'result' in results[0]:
-                encounters = results[0]['result']
+            if "result" in results[0]:
+                encounters = results[0]["result"]
             else:
                 encounters = results
-            
+
             logger.debug(f"Processed encounters: {encounters}")
-            
+
             if isinstance(encounters, list):
-                serialized_encounters = [serialize_encounter(encounter) for encounter in encounters]
+                serialized_encounters = [
+                    serialize_encounter(encounter) for encounter in encounters
+                ]
                 logger.debug(f"Serialized encounters: {serialized_encounters}")
                 return serialized_encounters
             else:
@@ -276,21 +302,24 @@ def get_encounter_by_id(encounter_id: str) -> EncounterDict:
     logger.debug(f"Getting encounter by ID: {encounter_id}")
     db = DbController()
     db.connect()
-    
+
     try:
         query = "SELECT * FROM encounter WHERE note_id = $encounter_id"
         params = {"encounter_id": encounter_id}
-        
+
         logger.debug(f"Executing encounter query: {query} with params: {params}")
         result = db.query(query, params)
         logger.debug(f"Encounter query result: {result}")
-        
+
         # Handle the result structure
         if result and isinstance(result, list) and len(result) > 0:
             encounter_data = result[0]
-            if isinstance(encounter_data, dict) and 'result' in encounter_data:
-                encounter_data = cast(Dict[str, Any], encounter_data['result'][0] if encounter_data['result'] else None)
-            
+            if isinstance(encounter_data, dict) and "result" in encounter_data:
+                encounter_data = cast(
+                    Dict[str, Any],
+                    encounter_data["result"][0] if encounter_data["result"] else None,
+                )
+
             if encounter_data:
                 serialized_result = serialize_encounter(encounter_data)
                 logger.debug(f"Serialized encounter result: {serialized_result}")
@@ -318,26 +347,30 @@ def get_encounters_by_patient(patient_id: str) -> List[EncounterDict]:
     logger.debug(f"Getting encounters for patient: {patient_id}")
     db = DbController()
     db.connect()
-    
+
     try:
         query = "SELECT * FROM encounter WHERE patient.demographic_no = $patient_id ORDER BY date_created DESC"
         params = {"patient_id": patient_id}
-        
+
         logger.debug(f"Executing query: {query} with params: {params}")
         result = db.query(query, params)
         logger.debug(f"Query result: {result}")
-        
+
         # Handle the result structure
         if result and len(result) > 0:
             encounters_data = result[0]
-            if 'result' in encounters_data:
-                encounters = encounters_data['result']
+            if "result" in encounters_data:
+                encounters = encounters_data["result"]
             else:
                 encounters = result
-            
+
             if isinstance(encounters, list):
-                serialized_encounters = [serialize_encounter(encounter) for encounter in encounters]
-                logger.debug(f"Found {len(serialized_encounters)} encounters for patient {patient_id}")
+                serialized_encounters = [
+                    serialize_encounter(encounter) for encounter in encounters
+                ]
+                logger.debug(
+                    f"Found {len(serialized_encounters)} encounters for patient {patient_id}"
+                )
                 return serialized_encounters
             else:
                 logger.debug("Encounters is not a list")
@@ -363,63 +396,83 @@ def create_encounter(encounter_data: Dict[str, Any], patient_id: str) -> Encount
     logger.debug(f"Creating encounter with data: {encounter_data}")
     db = DbController()
     db.connect()
-    
+
     try:
         # Generate a new note_id if not provided
         if not encounter_data.get("note_id"):
             logger.debug("No note_id provided, generating new one...")
-            results = db.select_many('encounter')
+            results = db.select_many("encounter")
             if results and len(results) > 0:
-                existing_ids = [int(e.get('note_id', 0)) for e in results if e.get('note_id')]
+                existing_ids = [
+                    int(e.get("note_id", 0)) for e in results if e.get("note_id")
+                ]
                 new_id = max(existing_ids) + 1 if existing_ids else 1000
             else:
                 new_id = 1000
             encounter_data["note_id"] = str(new_id)
             logger.debug(f"Generated note_id: {new_id}")
-        
+
         # Handle SOAP notes vs plain text
         note_text = encounter_data.get("note_text")
         soap_notes = None
         additional_notes = ""
-        
-        if isinstance(note_text, dict) and all(k in note_text for k in ['subjective', 'objective', 'assessment', 'plan']):
+
+        if isinstance(note_text, dict) and all(
+            k in note_text for k in ["subjective", "objective", "assessment", "plan"]
+        ):
             # This is SOAP notes
+            note_text_dict: Dict[str, Any] = note_text  # type: ignore
             soap_notes = SOAPNotes(
-                subjective=str(note_text.get('subjective', '')),
-                objective=str(note_text.get('objective', '')),
-                assessment=str(note_text.get('assessment', '')),
-                plan=str(note_text.get('plan', ''))
+                subjective=str(note_text_dict.get("subjective", "")),
+                objective=str(note_text_dict.get("objective", "")),
+                assessment=str(note_text_dict.get("assessment", "")),
+                plan=str(note_text_dict.get("plan", "")),
             )
         else:
             # This is plain text
-            additional_notes = str(note_text or "")
-        
+            additional_notes = note_text if isinstance(note_text, str) else ""
+
+        # Ensure observation_date is a datetime object
+        from datetime import datetime
+
+        obs_date = encounter_data.get("observation_date")
+        if isinstance(obs_date, str):
+            try:
+                observation_date = datetime.fromisoformat(obs_date)
+            except Exception:
+                observation_date = datetime.now()
+        elif isinstance(obs_date, datetime):
+            observation_date = obs_date
+        else:
+            observation_date = datetime.now()
+
         # Create Encounter object
         encounter = Encounter(
-            note_id=encounter_data["note_id"],
-            date_created=str(encounter_data.get("date_created") or ""),
+            id=encounter_data["id"],
+            observation_date=observation_date,
             provider_id=str(encounter_data.get("provider_id") or ""),
+            note_text=str(encounter_data.get("note_text") or ""),
             soap_notes=soap_notes,
             additional_notes=additional_notes,
-            diagnostic_codes=encounter_data.get("diagnostic_codes", [])
+            diagnostic_codes=encounter_data.get("diagnostic_codes", []),
         )
-        
+
         logger.debug(f"Created Encounter object: {encounter}")
         result = store_encounter(db, encounter, f"patient:{patient_id}")
         logger.debug(f"Store encounter result: {result}")
-        
+
         # Handle different result structures
         if result and isinstance(result, list) and len(result) > 0:
             first_result = result[0]
-            if isinstance(first_result, dict) and 'result' in first_result:
-                final_result = serialize_encounter(first_result['result'])
+            if isinstance(first_result, dict) and "result" in first_result:
+                final_result = serialize_encounter(first_result["result"])
             else:
                 final_result = serialize_encounter(first_result)
         elif result:
             final_result = serialize_encounter(result)
         else:
             final_result = cast(EncounterDict, {})
-        
+
         logger.debug(f"Final encounter result: {final_result}")
         return final_result
     except Exception as e:
@@ -429,7 +482,9 @@ def create_encounter(encounter_data: Dict[str, Any], patient_id: str) -> Encount
         db.close()
 
 
-def update_encounter(encounter_id: str, encounter_data: Dict[str, Any]) -> EncounterDict:
+def update_encounter(
+    encounter_id: str, encounter_data: Dict[str, Any]
+) -> EncounterDict:
     """
     Update an encounter record with only the provided fields
 
@@ -440,34 +495,48 @@ def update_encounter(encounter_id: str, encounter_data: Dict[str, Any]) -> Encou
     logger.debug(f"Updating encounter with ID: {encounter_id}")
     db = DbController()
     db.connect()
-    
+
     try:
         # List of valid encounter fields
         valid_fields = {
-            "date_created", "provider_id", "note_text", "note_type", "diagnostic_codes", "status"
+            "date_created",
+            "provider_id",
+            "note_text",
+            "note_type",
+            "diagnostic_codes",
+            "status",
         }
 
         # Only include fields present in encounter_data and valid for the encounter
-        update_data = {k: v for k, v in encounter_data.items() if k in valid_fields and v is not None}
+        update_data = {
+            k: v
+            for k, v in encounter_data.items()
+            if k in valid_fields and v is not None
+        }
 
         if not update_data:
             logger.debug("No valid fields to update for encounter.")
             return cast(EncounterDict, {})
 
         set_clause = ", ".join([f"{k} = ${k}" for k in update_data.keys()])
-        query = f"UPDATE encounter SET {set_clause} WHERE note_id = $encounter_id RETURN *"
+        query = (
+            f"UPDATE encounter SET {set_clause} WHERE note_id = $encounter_id RETURN *"
+        )
         params: Dict[str, Any] = {**update_data, "encounter_id": encounter_id}
 
         logger.debug(f"Executing encounter update query: {query} with params: {params}")
         result = db.query(query, params)
         logger.debug(f"Encounter update result: {result}")
-        
+
         # Handle the result structure
         if result and len(result) > 0:
             encounter_data = result[0]
-            if 'result' in encounter_data:
-                encounter_data = cast(Dict[str, Any], encounter_data['result'][0] if encounter_data['result'] else None)
-            
+            if "result" in encounter_data:
+                encounter_data = cast(
+                    Dict[str, Any],
+                    encounter_data["result"][0] if encounter_data["result"] else None,
+                )
+
             if encounter_data:
                 serialized_result = serialize_encounter(encounter_data)
                 logger.debug(f"Serialized encounter update result: {serialized_result}")
@@ -495,20 +564,22 @@ def delete_encounter(encounter_id: str) -> bool:
     logger.debug(f"Deleting encounter with ID: {encounter_id}")
     db = DbController()
     db.connect()
-    
+
     try:
         query = "DELETE FROM encounter WHERE note_id = $encounter_id"
         params = {"encounter_id": encounter_id}
-        
+
         logger.debug(f"Executing encounter delete query: {query} with params: {params}")
         result = db.query(query, params)
         logger.debug(f"Encounter delete result: {result}")
-        
+
         # Check if the delete was successful
         if result and len(result) > 0:
             delete_info = result[0]
-            if 'result' in delete_info:
-                deleted_count = len(delete_info['result']) if delete_info['result'] else 0
+            if "result" in delete_info:
+                deleted_count = (
+                    len(delete_info["result"]) if delete_info["result"] else 0
+                )
                 logger.debug(f"Deleted {deleted_count} encounter records")
                 return deleted_count > 0
             else:

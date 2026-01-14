@@ -1,0 +1,78 @@
+{
+  "powermode.enabled": false,
+  "editor.formatOnSave": false,
+  "editor.formatOnPaste": false,
+  "editor.formatOnType": false,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  "eslint.validate": [
+    "javascript",
+    "javascriptreact",
+    "typescript",
+    "typescriptreact"
+  ],
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "typescript.suggest.autoImports": true,
+  "editor.tabSize": 2,
+  "files.eol": "\n",
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[javascriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[css]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "prettier.requireConfig": true,
+  "eslint.workingDirectories": ["."],
+  "prettier.useEditorConfig": false,
+  "prettier.configPath": "./config/.prettierrc",
+  "prettier.ignorePath": "./config/.prettierignore",
+  "eslint.options": {
+    "configFile": "./config/.eslintrc.js",
+    "ignorePath": "./config/.eslintignore"
+  },
+  "python.analysis.typeCheckingMode": "strict",
+  "python.linting.enabled": true,
+  "python.linting.mypyEnabled": true,
+  "python.linting.mypyArgs": ["--config-file", "./mypy.ini"],
+  "python.pythonPath": ".venv/Scripts/python.exe",
+  "[python]": {
+      "editor.rulers": [88, 120],
+      "files.insertFinalNewline": false,
+
+      "editor.defaultFormatter": "ms-python.black-formatter",
+      "editor.formatOnType": true,
+      "editor.formatOnPaste": true,
+      "editor.formatOnSave": true,
+
+      "editor.autoIndent": "advanced",
+      "editor.detectIndentation": true,
+
+      "editor.insertSpaces": true,
+      "editor.trimAutoWhitespace": false,
+      "editor.codeActionsOnSave": {
+          "source.organizeImports": "explicit",
+          "source.fixAll": "explicit",
+      },
+  },
+}

@@ -1,13 +1,17 @@
 """
 User Model.
 """
+
 import hashlib
 import re
 import secrets
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from settings import logger
+
+UserRoles = Literal["patient", "provider", "admin"]
+AuthProvider = Literal["local", "cognito", "loginradius"]
 
 
 class User:
@@ -16,27 +20,32 @@ class User:
     """
 
     def __init__(
-            self,
-            username: str,
-            email: str,
-            password: Optional[str] = None,
-            first_name: Optional[str] = None,
-            last_name: Optional[str] = None,
-            role: str = "patient",
-            is_active: bool = True,
-            created_at: Optional[str] = None,
-            id: Optional[str] = None,
-            specialty: Optional[str] = None,
-            clinic_name: Optional[str] = None,
-            clinic_address: Optional[str] = None,
-            phone: Optional[str] = None,
-            max_organizations: int = 1,
-            user_organizations: int = 0,
-            organization_id: Optional[str] = None
+        self,
+        username: str,
+        email: str,
+        password: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        role: UserRoles = "patient",
+        is_active: bool = True,
+        created_at: Optional[datetime] = None,
+        updated_at: Optional[datetime] = None,
+        id: Optional[str] = None,
+        specialty: Optional[str] = None,
+        clinic_name: Optional[str] = None,
+        clinic_address: Optional[str] = None,
+        phone: Optional[str] = None,
+        max_organizations: int = 1,
+        user_organizations: int = 0,
+        organization_id: Optional[str] = None,
+        is_federated: bool = False,
+        auth_provider: AuthProvider = "local",
+        external_id: Optional[str] = None,
+        external_data: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Initialize a User object
-        
+
         :param username: Unique username
         :param email: User's email address
         :param password: Plain text password (will be hashed)
@@ -45,6 +54,7 @@ class User:
         :param role: User role (patient, provider, admin)
         :param is_active: Whether the user account is active
         :param created_at: Creation timestamp
+        :param updated_at: Creation timestamp
         :param id: Database record ID
         :param specialty: Medical specialty (for providers)
         :param clinic_name: Name of the clinic (for providers)
@@ -53,15 +63,20 @@ class User:
         :param max_organizations: Maximum number of organizations this user can create (default: 1)
         :param user_organizations: Current number of organizations created by this user (default: 0)
         :param organization_id: ID of the organization this user belongs to (if applicable)
+        :param is_federated: Whether the user is a federated user (e.g., created via Google sign-in)
+        :param auth_provider: Authentication provider (local, cognito, loginradius)
+        :param external_id: External user ID from OAuth provider
+        :param external_data: Additional data from OAuth provider
         """
+        self.id = id
         self.username = username
         self.email = email
         self.first_name = first_name or ""
         self.last_name = last_name or ""
         self.role = role
         self.is_active = is_active
-        self.created_at = created_at or datetime.now(timezone.utc).isoformat()
-        self.id = id
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.updated_at = updated_at or datetime.now(timezone.utc)
         self.specialty = specialty or ""
         self.clinic_name = clinic_name or ""
         self.clinic_address = clinic_address or ""
@@ -69,14 +84,52 @@ class User:
         self.max_organizations = max_organizations
         self.user_organizations = user_organizations
         self.organization_id = organization_id
-        
+        self.is_federated = is_federated
+        self.auth_provider = auth_provider
+        self.external_id = external_id
+        self.external_data = external_data or {}
+
         # Hash password if provided
         self.password_hash: Optional[str] = None
         if password:
             self.password_hash = self.hash_password(password)
         else:
             self.password_hash = None
-    
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert user to dictionary for database storage
+
+        :return: Dictionary representation of the user
+        """
+        data = {
+            "username": self.username,
+            "email": self.email,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "role": self.role,
+            "is_active": self.is_active,
+            "created_at": self.created_at,
+            "password_hash": self.password_hash,
+            "specialty": self.specialty,
+            "clinic_name": self.clinic_name,
+            "clinic_address": self.clinic_address,
+            "phone": self.phone,
+            "max_organizations": self.max_organizations,
+            "user_organizations": self.user_organizations,
+            "organization_id": self.organization_id,
+            "is_federated": self.is_federated,
+            "auth_provider": self.auth_provider,
+            "external_id": self.external_id,
+            "external_data": self.external_data,
+        }
+
+        # Only include id if it's not None (let SurrealDB generate it for new records)
+        if self.id is not None:
+            data["id"] = self.id
+
+        return data
+
     @staticmethod
     def hash_password(password: str) -> str:
         """
@@ -87,9 +140,9 @@ class User:
         """
         salt = secrets.token_hex(16)
         hash_obj = hashlib.sha256()
-        hash_obj.update((password + salt).encode('utf-8'))
+        hash_obj.update((password + salt).encode("utf-8"))
         return f"{salt}${hash_obj.hexdigest()}"
-    
+
     def verify_password(self, password: str) -> bool:
         """
         Verify a password against the stored hash
@@ -98,53 +151,29 @@ class User:
         :return: True if password matches, False otherwise
         """
         if not self.password_hash:
-            logger.debug(f"No password hash stored for user")
+            logger.debug("No password hash stored for user")
             return False
-        
+
         try:
             logger.debug(f"Stored password hash: {self.password_hash}")
             logger.debug(f"Attempting to verify password: {password}")
-            salt, hash_value = self.password_hash.split('$', 1)
+            salt, hash_value = self.password_hash.split("$", 1)
             logger.debug(f"Extracted salt: {salt}")
             logger.debug(f"Extracted hash: {hash_value}")
-            
+
             hash_obj = hashlib.sha256()
-            hash_obj.update((password + salt).encode('utf-8'))
+            hash_obj.update((password + salt).encode("utf-8"))
             computed_hash = hash_obj.hexdigest()
             logger.debug(f"Computed hash: {computed_hash}")
             logger.debug(f"Hash match: {computed_hash == hash_value}")
-            
+
             return computed_hash == hash_value
         except (ValueError, AttributeError) as e:
             logger.debug(f"Password verification error: {e}")
             return False
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert user to dictionary for database storage
 
-        :return: Dictionary representation of the user
-        """
-        return {
-            'username': self.username,
-            'email': self.email,
-            'first_name': self.first_name,
-            'last_name': self.last_name,
-            'role': self.role,
-            'is_active': self.is_active,
-            'created_at': self.created_at,
-            'password_hash': self.password_hash,
-            'specialty': self.specialty,
-            'clinic_name': self.clinic_name,
-            'clinic_address': self.clinic_address,
-            'phone': self.phone,
-            'max_organizations': self.max_organizations,
-            'user_organizations': self.user_organizations,
-            'organization_id': self.organization_id
-        }
-    
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'User':
+    def from_dict(cls, data: Dict[str, Any]) -> "User":
         """
         Create user from dictionary
 
@@ -152,32 +181,36 @@ class User:
         :return: User object
         """
         # Convert RecordID to string if it exists
-        user_id = data.get('id')
-        if hasattr(user_id, '__str__'):
+        user_id = data.get("id")
+        if hasattr(user_id, "__str__"):
             user_id = str(user_id)
-        
+
         user = cls(
-            username=str(data.get('username') or ""),
-            email=str(data.get('email') or ""),
-            first_name=data.get('first_name'),
-            last_name=data.get('last_name'),
-            role=data.get('role', 'patient'),
-            is_active=data.get('is_active', True),
-            created_at=data.get('created_at'),
+            username=str(data.get("username") or ""),
+            email=str(data.get("email") or ""),
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name"),
+            role=data.get("role", "patient"),
+            is_active=data.get("is_active", True),
+            created_at=data.get("created_at"),
             id=user_id,
-            specialty=data.get('specialty'),
-            clinic_name=data.get('clinic_name'),
-            clinic_address=data.get('clinic_address'),
-            phone=data.get('phone'),
-            max_organizations=data.get('max_organizations', 1),
-            user_organizations=data.get('user_organizations', 0),
-            organization_id=data.get('organization_id')
+            specialty=data.get("specialty"),
+            clinic_name=data.get("clinic_name"),
+            clinic_address=data.get("clinic_address"),
+            phone=data.get("phone"),
+            max_organizations=data.get("max_organizations", 1),
+            user_organizations=data.get("user_organizations", 0),
+            organization_id=data.get("organization_id"),
+            is_federated=data.get("is_federated", False),
+            auth_provider=data.get("auth_provider", "local"),
+            external_id=data.get("external_id"),
+            external_data=data.get("external_data"),
         )
         # Set password hash if it exists in the data
-        if 'password_hash' in data:
-            user.password_hash = data['password_hash']
+        if "password_hash" in data:
+            user.password_hash = data["password_hash"]
         return user
-    
+
     @staticmethod
     def validate_username(username: str) -> tuple[bool, str]:
         """
@@ -192,10 +225,10 @@ class User:
             return False, "Username must be at least 3 characters long"
         if len(username) > 30:
             return False, "Username must be less than 30 characters"
-        if not re.match(r'^[a-zA-Z0-9_]+$', username):
+        if not re.match(r"^[a-zA-Z0-9_]+$", username):
             return False, "Username can only contain letters, numbers, and underscores"
         return True, ""
-    
+
     @staticmethod
     def validate_email(email: str) -> tuple[bool, str]:
         """
@@ -206,11 +239,11 @@ class User:
         """
         if not email:
             return False, "Email is required"
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(email_pattern, email):
             return False, "Invalid email format"
         return True, ""
-    
+
     @staticmethod
     def validate_password(password: str) -> tuple[bool, str]:
         """
@@ -223,14 +256,14 @@ class User:
             return False, "Password is required"
         if len(password) < 8:
             return False, "Password must be at least 8 characters long"
-        if not re.search(r'[A-Z]', password):
+        if not re.search(r"[A-Z]", password):
             return False, "Password must contain at least one uppercase letter"
-        if not re.search(r'[a-z]', password):
+        if not re.search(r"[a-z]", password):
             return False, "Password must contain at least one lowercase letter"
-        if not re.search(r'\d', password):
+        if not re.search(r"\d", password):
             return False, "Password must contain at least one number"
         return True, ""
-    
+
     @staticmethod
     def validate_phone(phone: str) -> tuple[bool, str]:
         """
@@ -242,11 +275,14 @@ class User:
         if not phone:
             return True, ""  # Phone is optional
         # Basic phone validation - allows various formats
-        phone_pattern = r'^[\+]?[1-9][\d]{0,15}$'
-        if not re.match(phone_pattern, phone.replace(' ', '').replace('-', '').replace('(', '').replace(')', '')):
+        phone_pattern = r"^[\+]?[1-9][\d]{0,15}$"
+        if not re.match(
+            phone_pattern,
+            phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", ""),
+        ):
             return False, "Invalid phone number format"
         return True, ""
-    
+
     @staticmethod
     def validate_role(role: str) -> tuple[bool, str]:
         """
@@ -255,11 +291,11 @@ class User:
         :param role: User role to validate
         :return: Tuple (is_valid: bool, error_message: str)
         """
-        valid_roles = ['patient', 'provider', 'admin', 'administrator', 'superadmin']
+        valid_roles = ["patient", "provider", "admin", "administrator", "superadmin"]
         if role not in valid_roles:
             return False, f"Role must be one of: {', '.join(valid_roles)}"
         return True, ""
-    
+
     def get_full_name(self) -> str:
         """
         Get user's full name
@@ -274,7 +310,7 @@ class User:
             return self.last_name
         else:
             return self.username
-    
+
     def has_role(self, required_role: str) -> bool:
         """
         Check if user has the required role
@@ -282,40 +318,36 @@ class User:
         :param required_role: Role to check against (patient, provider, admin)
         :return: True if user has the required role, False otherwise
         """
-        role_hierarchy = {
-            'patient': 1,
-            'provider': 2,
-            'admin': 3
-        }
-        
+        role_hierarchy = {"patient": 1, "provider": 2, "admin": 3}
+
         user_level = role_hierarchy.get(self.role, 0)
         required_level = role_hierarchy.get(required_role, 0)
-        
+
         return user_level >= required_level
-    
+
     def is_admin(self) -> bool:
         """
         Check if user is an admin
 
         :return: True if user is an admin, False otherwise
         """
-        return self.role == 'admin'
-    
+        return self.role == "admin"
+
     def is_provider(self) -> bool:
         """
         Check if user is a provider or admin
 
         :return: True if user is a provider or admin, False otherwise
         """
-        return self.has_role('provider')
-    
+        return self.has_role("provider")
+
     def is_patient(self) -> bool:
         """
         Check if user is a patient
 
         :return: True if user is a patient, False otherwise
         """
-        return self.role == 'patient'
+        return self.role == "patient"
 
     def can_create_organization(self) -> bool:
         """
@@ -341,5 +373,35 @@ class User:
         :return: None
         """
         if not self.can_create_organization():
-            raise ValueError(f"User has reached their organization limit of {self.max_organizations}")
+            raise ValueError(
+                f"User has reached their organization limit of {self.max_organizations}"
+            )
         self.user_organizations += 1
+
+    @classmethod
+    def schema(cls) -> str:
+        """
+        Defines the schema for the User table in SurrealDB.
+        :return: The entire schema definition for the table in a single string containing all statements.
+        """
+        return """
+            DEFINE TABLE user SCHEMAFULL;
+            DEFINE FIELD username ON user TYPE string;
+            DEFINE FIELD email ON user TYPE string ASSERT string::is::email($);
+            DEFINE FIELD first_name ON user TYPE string;
+            DEFINE FIELD last_name ON user TYPE string;
+            DEFINE FIELD role ON user TYPE "patient" | "provider" | "admin";
+            DEFINE FIELD specialty ON user TYPE string;
+            DEFINE FIELD clinic_name ON user TYPE string;
+            DEFINE FIELD clinic_address ON user TYPE string;
+            DEFINE FIELD phone ON user TYPE string;
+            DEFINE FIELD max_organizations ON user TYPE int DEFAULT 1;
+            DEFINE FIELD user_organizations ON user TYPE int DEFAULT 0;
+            DEFINE FIELD organization_id ON user TYPE record<organization>;
+            DEFINE FIELD is_federated ON user TYPE bool DEFAULT false;
+            DEFINE FIELD auth_provider ON user TYPE "local" | "cognito" | "loginradius" DEFAULT "local";
+            DEFINE FIELD external_id ON user TYPE string;
+            DEFINE FIELD external_data ON user TYPE object DEFAULT {};
+            DEFINE FIELD created_at ON user TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD updated_at ON user TYPE datetime VALUE time::now();
+        """

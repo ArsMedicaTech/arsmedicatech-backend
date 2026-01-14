@@ -1,6 +1,7 @@
 """
 Custom Logger with Colored Output
 """
+
 import logging
 from typing import Any
 
@@ -9,6 +10,7 @@ class CustomFormatter(logging.Formatter):
     """
     Custom formatter to add colors to log messages based on their severity level.
     """
+
     grey = "\x1b[38;20m"
     yellow = "\x1b[33;20m"
     green = "\x1b[32;20m"
@@ -16,15 +18,17 @@ class CustomFormatter(logging.Formatter):
     red = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+    log_format = (
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+    )
 
     FORMATS = {
-        #logging.DEBUG: green + log_format + reset,
+        # logging.DEBUG: green + log_format + reset,
         logging.DEBUG: black + log_format + reset,
         logging.INFO: grey + log_format + reset,
         logging.WARNING: yellow + log_format + reset,
         logging.ERROR: red + log_format + reset,
-        logging.CRITICAL: bold_red + log_format + reset
+        logging.CRITICAL: bold_red + log_format + reset,
     }
 
     def format(self, record: logging.LogRecord) -> str:
@@ -37,11 +41,13 @@ class CustomFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
+
 class Logger:
     """
     Custom logger class that uses the standard logging library with a custom formatter.
     """
-    def __init__(self, name: str = 'logger', level: int = logging.WARN) -> None:
+
+    def __init__(self, name: str = "logger", level: int = logging.WARN) -> None:
         """
         Initialize the logger with a name and logging level.
         :param name: The name of the logger.
@@ -52,7 +58,7 @@ class Logger:
         self._name = name
         self._level = level
         self._logger = logging.getLogger(name)
-        #self._logger = logging.getLogger(__name__)
+        # self._logger = logging.getLogger(__name__)
         self._logger = logging.getLogger(name)
         self._logger.propagate = False
         self._handler = logging.StreamHandler()
@@ -64,11 +70,11 @@ class Logger:
         Configure the logger with a custom formatter and set the logging level.
         :return: None
         """
-        #formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         self._handler.setFormatter(CustomFormatter())
         self._logger.handlers = [self._handler]
         self._logger.setLevel(self._level)
-        logging.basicConfig(level=self._level, format='%(message)s')
+        logging.basicConfig(level=self._level, format="%(message)s")
 
     def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """

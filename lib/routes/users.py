@@ -1,6 +1,7 @@
 """
 User management routes for the application.
 """
+
 from typing import Any, Dict, List, Tuple
 
 from flask import Response, jsonify, request, session
@@ -8,7 +9,7 @@ from flask import Response, jsonify, request, session
 from lib.models.user.user import User
 from lib.services.auth_decorators import get_current_user, get_current_user_id
 from lib.services.openai_security import get_openai_security_service
-from lib.services.user_service import UserService
+from lib.services.user_service import CreateUserResult, UserService
 from settings import logger
 
 
@@ -35,7 +36,7 @@ def search_users_route() -> Tuple[Response, int]:
     :return: Response object containing a JSON list of users matching the search query.
     """
     logger.debug("User search request received")
-    query = request.args.get('q', '').strip()
+    query = request.args.get("q", "").strip()
     logger.debug(f"Search query: '{query}'")
 
     user_service = UserService()
@@ -60,27 +61,30 @@ def search_users_route() -> Tuple[Response, int]:
             searchable_text = f"{user.username} {user.first_name or ''} {user.last_name or ''} {user.email or ''}".lower()
 
             if not query or query.lower() in searchable_text:
-                filtered_users.append({
-                    "id": str(user.id) if user.id is not None else "",
-                    "username": user.username or "",
-                    "email": user.email or "",
-                    "first_name": user.first_name or "",
-                    "last_name": user.last_name or "",
-                    "role": user.role or "",
-                    "display_name": (f"{user.first_name or ''} {user.last_name or ''}".strip() or (user.username or "")),
-                    "avatar": f"https://ui-avatars.com/api/?name={user.first_name or user.username or ''}&background=random"
-                })
+                filtered_users.append(
+                    {
+                        "id": str(user.id) if user.id is not None else "",
+                        "username": user.username or "",
+                        "email": user.email or "",
+                        "first_name": user.first_name or "",
+                        "last_name": user.last_name or "",
+                        "role": user.role or "",
+                        "display_name": (
+                            f"{user.first_name or ''} {user.last_name or ''}".strip()
+                            or (user.username or "")
+                        ),
+                        "avatar": f"https://ui-avatars.com/api/?name={user.first_name or user.username or ''}&background=random",
+                    }
+                )
 
         # Limit results to 20 users
         filtered_users = filtered_users[:20]
 
-        return jsonify({
-            "users": filtered_users,
-            "total": len(filtered_users)
-        }), 200
+        return jsonify({"users": filtered_users, "total": len(filtered_users)}), 200
 
     finally:
         user_service.close()
+
 
 def check_users_exist_route() -> Tuple[Response, int]:
     """
@@ -104,7 +108,9 @@ def check_users_exist_route() -> Tuple[Response, int]:
         users = user_service.get_all_users()
         logger.debug(f"Found {len(users)} users in database")
         for user in users:
-            logger.debug(f"User: {user.username} (ID: {user.id}, Role: {user.role}, Active: {user.is_active})")
+            logger.debug(
+                f"User: {user.username} (ID: {user.id}, Role: {user.role}, Active: {user.is_active})"
+            )
         return jsonify({"users_exist": len(users) > 0, "user_count": len(users)}), 200
     finally:
         user_service.close()
@@ -136,6 +142,7 @@ def setup_default_admin_route() -> Tuple[Response, int]:
     finally:
         user_service.close()
 
+
 def activate_user_route(user_id: str) -> Tuple[Response, int]:
     """
     Activate a user account (admin only)
@@ -163,6 +170,7 @@ def activate_user_route(user_id: str) -> Tuple[Response, int]:
             return jsonify({"error": message}), 400
     finally:
         user_service.close()
+
 
 def deactivate_user_route(user_id: str) -> Tuple[Response, int]:
     """
@@ -192,6 +200,7 @@ def deactivate_user_route(user_id: str) -> Tuple[Response, int]:
     finally:
         user_service.close()
 
+
 def get_all_users_route() -> Tuple[Response, int]:
     """
     Get all users (admin only)
@@ -210,23 +219,29 @@ def get_all_users_route() -> Tuple[Response, int]:
     user_service.connect()
     try:
         users = user_service.get_all_users()
-        return jsonify({
-            "users": [
+        return (
+            jsonify(
                 {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "role": user.role,
-                    "is_active": user.is_active,
-                    "created_at": user.created_at
+                    "users": [
+                        {
+                            "id": user.id,
+                            "username": user.username,
+                            "email": user.email,
+                            "first_name": user.first_name,
+                            "last_name": user.last_name,
+                            "role": user.role,
+                            "is_active": user.is_active,
+                            "created_at": user.created_at,
+                        }
+                        for user in users
+                    ]
                 }
-                for user in users
-            ]
-        }), 200
+            ),
+            200,
+        )
     finally:
         user_service.close()
+
 
 def change_password_route() -> Tuple[Response, int]:
     """
@@ -251,8 +266,8 @@ def change_password_route() -> Tuple[Response, int]:
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    current_password = data.get('current_password')
-    new_password = data.get('new_password')
+    current_password = data.get("current_password")
+    new_password = data.get("new_password")
 
     if not all([current_password, new_password]):
         return jsonify({"error": "Current password and new password are required"}), 400
@@ -264,9 +279,7 @@ def change_password_route() -> Tuple[Response, int]:
         if not user_id:
             return jsonify({"error": "Authentication required"}), 401
         success, message = user_service.change_password(
-            user_id,
-            current_password,
-            new_password
+            user_id, current_password, new_password
         )
 
         assert isinstance(success, bool), "Success should be a boolean"
@@ -277,6 +290,7 @@ def change_password_route() -> Tuple[Response, int]:
             return jsonify({"error": message}), 400
     finally:
         user_service.close()
+
 
 def get_current_user_info_route() -> Tuple[Response, int]:
     """
@@ -306,22 +320,28 @@ def get_current_user_info_route() -> Tuple[Response, int]:
 
         user = user_service.get_user_by_id(user_id)
         if user:
-            return jsonify({
-                "user": {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "role": user.role,
-                    "is_active": user.is_active,
-                    "created_at": user.created_at
-                }
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "user": {
+                            "id": user.id,
+                            "username": user.username,
+                            "email": user.email,
+                            "first_name": user.first_name,
+                            "last_name": user.last_name,
+                            "role": user.role,
+                            "is_active": user.is_active,
+                            "created_at": user.created_at,
+                        }
+                    }
+                ),
+                200,
+            )
         else:
             return jsonify({"error": "User not found"}), 404
     finally:
         user_service.close()
+
 
 def logout_route() -> Tuple[Response, int]:
     """
@@ -340,7 +360,8 @@ def logout_route() -> Tuple[Response, int]:
     :return: Response object containing a JSON message indicating successful logout.
     """
     from typing import Optional
-    token = session.get('auth_token', '')
+
+    token = session.get("auth_token", "")
     token_str: Optional[str] = str(token) if token is not None else None
     if token_str:
         user_service = UserService()
@@ -350,8 +371,9 @@ def logout_route() -> Tuple[Response, int]:
         finally:
             user_service.close()
 
-    session.pop('auth_token', None)
+    session.pop("auth_token", None)
     return jsonify({"message": "Logged out successfully"}), 200
+
 
 def login_route() -> Tuple[Response, int]:
     """
@@ -377,8 +399,8 @@ def login_route() -> Tuple[Response, int]:
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    username = data.get('username')
-    password = data.get('password')
+    username = data.get("username")
+    password = data.get("password")
 
     logger.debug(f"Login attempt for username: {username}")
 
@@ -388,32 +410,42 @@ def login_route() -> Tuple[Response, int]:
     user_service = UserService()
     user_service.connect()
     try:
-        success, message, user_session = user_service.authenticate_user(username, password)
+        success, message, user_session = user_service.authenticate_user(
+            username, password
+        )
 
         logger.debug(f"Authentication result - success: {success}, message: {message}")
 
         if success:
-            assert user_session is not None, "User session should not be None on successful authentication"
+            assert (
+                user_session is not None
+            ), "User session should not be None on successful authentication"
 
             # Store token and user_id in session
-            session['auth_token'] = user_session.session_token
-            session['user_id'] = user_session.user_id
+            session["auth_token"] = user_session.session_token
+            session["user_id"] = user_session.user_id
             logger.debug(f"Stored session token: {user_session.session_token[:10]}...")
             logger.debug(f"Stored session user_id: {user_session.user_id}")
 
-            return jsonify({
-                "message": message,
-                "token": user_session.session_token,
-                "user": {
-                    "id": user_session.user_id,
-                    "username": user_session.username,
-                    "role": user_session.role
-                }
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "message": message,
+                        "token": user_session.session_token,
+                        "user": {
+                            "id": user_session.user_id,
+                            "username": user_session.username,
+                            "role": user_session.role,
+                        },
+                    }
+                ),
+                200,
+            )
         else:
             return jsonify({"error": message}), 401
     finally:
         user_service.close()
+
 
 def register_route() -> Tuple[Response, int]:
     """
@@ -437,14 +469,15 @@ def register_route() -> Tuple[Response, int]:
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    username = data.get('username')
-    email = data.get('email')
-    password = data.get('password')
-    first_name = data.get('first_name')
-    last_name = data.get('last_name')
-    role = data.get('role', 'patient')
+    username = data.get("username")
+    email = data.get("email")
+    password = data.get("password")
+    first_name = data.get("first_name")
+    last_name = data.get("last_name")
+    role = data.get("role", "patient")
     logger.debug(
-        f"[DEBUG] Registration fields - username: {username}, email: {email}, first_name: {first_name}, last_name: {last_name}, role: {role}")
+        f"[DEBUG] Registration fields - username: {username}, email: {email}, first_name: {first_name}, last_name: {last_name}, role: {role}"
+    )
 
     if not all([username, email, password]):
         return jsonify({"error": "Username, email, and password are required"}), 400
@@ -453,39 +486,45 @@ def register_route() -> Tuple[Response, int]:
     user_service.connect()
     try:
         logger.debug("Calling user_service.create_user")
-        success, message, user = user_service.create_user(
+        create_user_result: CreateUserResult = user_service.create_user(
             username=username,
             email=email,
             password=password,
             first_name=first_name,
             last_name=last_name,
-            role=role
+            role=role,
         )
 
-        logger.debug(f"User creation result - success: {success}, message: {message}")
-        if success:
-            if not user:
+        logger.debug(
+            f"User creation result - success: {create_user_result['success']}, message: {create_user_result['message']}"
+        )
+        if create_user_result["success"]:
+            if not create_user_result["user"]:
                 logger.error("User creation succeeded but returned user is None")
                 return jsonify({"error": "User creation failed"}), 500
 
-            logger.debug(f"User created successfully: {user.id}")
-            return jsonify({
-                "message": message,
-                "user": {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "role": user.role
-                }
-            }), 201
+            logger.debug(f"User created successfully: {create_user_result['user'].id}")
+            return (
+                jsonify(
+                    {
+                        "message": create_user_result["message"],
+                        "user": {
+                            "id": create_user_result["user"].id,
+                            "username": create_user_result["user"].username,
+                            "email": create_user_result["user"].email,
+                            "first_name": create_user_result["user"].first_name,
+                            "last_name": create_user_result["user"].last_name,
+                            "role": create_user_result["user"].role,
+                        },
+                    }
+                ),
+                201,
+            )
         else:
-            logger.debug(f"User creation failed: {message}")
-            return jsonify({"error": message}), 400
+            logger.debug(f"User creation failed: {create_user_result['message']}")
+            return jsonify({"error": create_user_result["message"]}), 400
     finally:
         user_service.close()
-
 
 
 def settings_route() -> Tuple[Response, int]:
@@ -516,9 +555,9 @@ def settings_route() -> Tuple[Response, int]:
 
     :return: Response object containing a JSON representation of the user's settings or an error message.
     """
-    if request.method == 'GET':
+    if request.method == "GET":
         return get_user_settings()
-    elif request.method == 'POST':
+    elif request.method == "POST":
         return update_user_settings()
     else:
         return jsonify({"error": "Method not allowed"}), 405
@@ -559,16 +598,21 @@ def get_user_settings() -> Tuple[Response, int]:
                 return jsonify({"error": "Failed to load settings"}), 500
 
             # Return settings without exposing the API keys
-            return jsonify({
-                "success": True,
-                "settings": {
-                    "user_id": settings.user_id,
-                    "has_openai_api_key": settings.has_openai_api_key(),
-                    "has_optimal_api_key": settings.has_optimal_api_key(),
-                    "created_at": settings.created_at,
-                    "updated_at": settings.updated_at
-                }
-            }), 200
+            return (
+                jsonify(
+                    {
+                        "success": True,
+                        "settings": {
+                            "user_id": settings.user_id,
+                            "has_openai_api_key": settings.has_openai_api_key(),
+                            "has_optimal_api_key": settings.has_optimal_api_key(),
+                            "created_at": settings.created_at,
+                            "updated_at": settings.updated_at,
+                        },
+                    }
+                ),
+                200,
+            )
         finally:
             user_service.close()
 
@@ -613,37 +657,49 @@ def update_user_settings() -> Tuple[Response, int]:
         user_service.connect()
         try:
             # Handle OpenAI API key update
-            if 'openai_api_key' in data:
-                api_key = data['openai_api_key']
+            if "openai_api_key" in data:
+                api_key = data["openai_api_key"]
                 logger.debug(f"Updating OpenAI API key for user {user_id}")
                 logger.debug(f"API key length: {len(api_key) if api_key else 0}")
-                logger.debug(f"API key starts with sk-: {api_key.startswith('sk-') if api_key else False}")
-                
+                logger.debug(
+                    f"API key starts with sk-: {api_key.startswith('sk-') if api_key else False}"
+                )
+
                 success, message = user_service.update_openai_api_key(user_id, api_key)
                 logger.debug(f"Update result: success={success}, message={message}")
 
                 if success:
-                    return jsonify({
-                        "success": True,
-                        "message": "OpenAI API key updated successfully"
-                    }), 200
+                    return (
+                        jsonify(
+                            {
+                                "success": True,
+                                "message": "OpenAI API key updated successfully",
+                            }
+                        ),
+                        200,
+                    )
                 else:
                     return jsonify({"error": message}), 400
 
             # Handle Optimal API key update
-            if 'optimal_api_key' in data:
-                api_key = data['optimal_api_key']
+            if "optimal_api_key" in data:
+                api_key = data["optimal_api_key"]
                 logger.debug(f"Updating Optimal API key for user {user_id}")
                 logger.debug(f"API key length: {len(api_key) if api_key else 0}")
-                
+
                 success, message = user_service.update_optimal_api_key(user_id, api_key)
                 logger.debug(f"Update result: success={success}, message={message}")
 
                 if success:
-                    return jsonify({
-                        "success": True,
-                        "message": "Optimal API key updated successfully"
-                    }), 200
+                    return (
+                        jsonify(
+                            {
+                                "success": True,
+                                "message": "Optimal API key updated successfully",
+                            }
+                        ),
+                        200,
+                    )
                 else:
                     return jsonify({"error": message}), 400
 
@@ -685,11 +741,8 @@ def get_api_usage_route() -> Tuple[Response, int]:
 
         security_service = get_openai_security_service()
         usage_stats = security_service.get_usage_stats(user_id)
-        
-        return jsonify({
-            "success": True,
-            "usage": usage_stats
-        }), 200
+
+        return jsonify({"success": True, "usage": usage_stats}), 200
 
     except Exception as e:
         logger.error(f"Error getting API usage: {e}")
@@ -739,14 +792,11 @@ def get_user_profile_route() -> Tuple[Response, int]:
                 "clinic_address": user.clinic_address,
                 "phone": user.phone,
                 "is_active": user.is_active,
-                "created_at": user.created_at
+                "created_at": user.created_at,
             }
             logger.debug(f"Returning profile data: {profile_data}")
 
-            return jsonify({
-                "success": True,
-                "profile": profile_data
-            }), 200
+            return jsonify({"success": True, "profile": profile_data}), 200
         finally:
             user_service.close()
 
@@ -799,51 +849,53 @@ def update_user_profile_route() -> Tuple[Response, int]:
         try:
             # Prepare updates
             updates: Dict[str, Any] = {}
-            
+
             # Basic profile fields
-            if 'first_name' in data:
-                updates['first_name'] = data['first_name']
-            if 'last_name' in data:
-                updates['last_name'] = data['last_name']
-            if 'phone' in data:
+            if "first_name" in data:
+                updates["first_name"] = data["first_name"]
+            if "last_name" in data:
+                updates["last_name"] = data["last_name"]
+            if "phone" in data:
                 # Validate phone number
-                valid, msg = User.validate_phone(data['phone'])
+                valid, msg = User.validate_phone(data["phone"])
                 if not valid:
                     return jsonify({"error": msg}), 400
-                updates['phone'] = data['phone']
-            
+                updates["phone"] = data["phone"]
+
             # Provider-specific fields
-            if 'specialty' in data:
-                updates['specialty'] = data['specialty']
-            if 'clinic_name' in data:
-                updates['clinic_name'] = data['clinic_name']
-            if 'clinic_address' in data:
-                updates['clinic_address'] = data['clinic_address']
-            
+            if "specialty" in data:
+                updates["specialty"] = data["specialty"]
+            if "clinic_name" in data:
+                updates["clinic_name"] = data["clinic_name"]
+            if "clinic_address" in data:
+                updates["clinic_address"] = data["clinic_address"]
+
             # Role updates (admin only)
-            if 'role' in data:
+            if "role" in data:
                 current_user = user_service.get_user_by_id(user_id)
                 if not current_user or not current_user.is_admin():
                     return jsonify({"error": "Only admins can change roles"}), 403
-                
-                valid, msg = User.validate_role(data['role'])
+
+                valid, msg = User.validate_role(data["role"])
                 if not valid:
                     return jsonify({"error": msg}), 400
-                updates['role'] = data['role']
+                updates["role"] = data["role"]
 
             if not updates:
                 return jsonify({"error": "No valid fields to update"}), 400
 
-            success, message = user_service.update_user(user_id, updates)
-            logger.debug(f"Update result: success={success}, message={message}")
+            update_result = user_service.update_user(user_id, updates)
+            logger.debug(f"Update result: {update_result}")
 
-            if success:
-                return jsonify({
-                    "success": True,
-                    "message": "Profile updated successfully"
-                }), 200
+            if update_result["success"]:
+                return (
+                    jsonify(
+                        {"success": True, "message": "Profile updated successfully"}
+                    ),
+                    200,
+                )
             else:
-                return jsonify({"error": message}), 400
+                return jsonify({"error": update_result["message"]}), 400
 
         finally:
             user_service.close()
