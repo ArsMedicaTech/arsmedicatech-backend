@@ -194,15 +194,17 @@ app.config["SESSION_PERMANENT"] = True
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=1)
 
 
+_cors_allows_any_origin = len(CORS_ORIGINS) == 1 and CORS_ORIGINS[0] == "*"
+
 CORS(
     app,
     resources={
         r"/*": {
             "origins": CORS_ORIGINS,
-            "supports_credentials": True,
+            "supports_credentials": False if _cors_allows_any_origin else True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
-            "expose_headers": ["Set-Cookie"],
+            "expose_headers": [] if _cors_allows_any_origin else ["Set-Cookie"],
         }
     },
 )
