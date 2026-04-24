@@ -252,6 +252,48 @@ class UserService:
             if result and result["id"]:
                 user.id = result["id"]
 
+                # Ensure FHIR linkage IDs are populated and consistent with role
+                try:
+                    user_id_str = str(user.id) if user.id is not None else ""
+                    user_id_suffix = (
+                        user_id_str.split(":", 1)[1] if ":" in user_id_str else user_id_str
+                    )
+
+                    if user.role == "provider":
+                        user.fhir_patient_id = None
+                        if not user.fhir_practitioner_id:
+                            user.fhir_practitioner_id = f"dev-provider-{user_id_suffix}"
+                    elif user.role == "patient":
+                        user.fhir_practitioner_id = None
+                        if not user.fhir_patient_id:
+                            user.fhir_patient_id = f"dev-patient-{user_id_suffix}"
+                    else:
+                        user.fhir_practitioner_id = None
+                        user.fhir_patient_id = None
+
+                    if user.role == "provider" and not user.fhir_practitioner_id:
+                        logger.warning(
+                            f"Provider user missing fhir_practitioner_id after creation: {user.id}"
+                        )
+                    if user.role == "patient" and not user.fhir_patient_id:
+                        logger.warning(
+                            f"Patient user missing fhir_patient_id after creation: {user.id}"
+                        )
+
+                    # Persist linkage into SurrealDB
+                    if user.id:
+                        self.db.update(
+                            str(user.id),
+                            {
+                                "fhir_practitioner_id": user.fhir_practitioner_id,
+                                "fhir_patient_id": user.fhir_patient_id,
+                            },
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to populate FHIR linkage IDs for user {user.id}: {e}"
+                    )
+
                 if type(getattr(user, "id")) is not str:
                     raise TypeError("User ID is not a string")
                 logger.debug(f"User created successfully with ID: {user.id}")

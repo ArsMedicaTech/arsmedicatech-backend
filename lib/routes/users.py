@@ -320,16 +320,29 @@ def get_current_user_info_route() -> Tuple[Response, int]:
 
         user = user_service.get_user_by_id(user_id)
         if user:
+            if user.role == "provider" and not user.fhir_practitioner_id:
+                logger.warning(
+                    f"Provider user missing fhir_practitioner_id in /auth/me response: {user.id}"
+                )
+            if user.role == "patient" and not user.fhir_patient_id:
+                logger.warning(
+                    f"Patient user missing fhir_patient_id in /auth/me response: {user.id}"
+                )
+
             return (
                 jsonify(
                     {
                         "user": {
                             "id": user.id,
+                            "external_id": user.external_id,
+                            "auth_provider": user.auth_provider,
                             "username": user.username,
                             "email": user.email,
                             "first_name": user.first_name,
                             "last_name": user.last_name,
                             "role": user.role,
+                            "fhir_practitioner_id": user.fhir_practitioner_id,
+                            "fhir_patient_id": user.fhir_patient_id,
                             "is_active": user.is_active,
                             "created_at": user.created_at,
                         }

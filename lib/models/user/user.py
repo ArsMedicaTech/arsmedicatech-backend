@@ -42,6 +42,8 @@ class User:
         auth_provider: AuthProvider = "local",
         external_id: Optional[str] = None,
         external_data: Optional[Dict[str, Any]] = None,
+        fhir_practitioner_id: Optional[str] = None,
+        fhir_patient_id: Optional[str] = None,
         is_first_time: Optional[bool] = False,
     ) -> None:
         """
@@ -90,6 +92,8 @@ class User:
         self.auth_provider = auth_provider
         self.external_id = external_id
         self.external_data = external_data or {}
+        self.fhir_practitioner_id = fhir_practitioner_id
+        self.fhir_patient_id = fhir_patient_id
         self.is_first_time = is_first_time
 
         # Hash password if provided
@@ -125,6 +129,8 @@ class User:
             "auth_provider": self.auth_provider,
             "external_id": self.external_id,
             "external_data": self.external_data,
+            "fhir_practitioner_id": self.fhir_practitioner_id,
+            "fhir_patient_id": self.fhir_patient_id,
             "is_first_time": self.is_first_time,
         }
 
@@ -209,6 +215,8 @@ class User:
             auth_provider=data.get("auth_provider", "local"),
             external_id=data.get("external_id"),
             external_data=data.get("external_data"),
+            fhir_practitioner_id=data.get("fhir_practitioner_id"),
+            fhir_patient_id=data.get("fhir_patient_id"),
         )
         # Set password hash if it exists in the data
         if "password_hash" in data:
@@ -406,6 +414,8 @@ class User:
             DEFINE FIELD auth_provider ON user TYPE "local" | "cognito" | "loginradius" | "keycloak" DEFAULT "local";
             DEFINE FIELD external_id ON user TYPE string;
             DEFINE FIELD external_data ON user TYPE object DEFAULT {};
+            DEFINE FIELD fhir_practitioner_id ON user TYPE option<string>;
+            DEFINE FIELD fhir_patient_id ON user TYPE option<string>;
             DEFINE FIELD created_at ON user TYPE datetime VALUE time::now() READONLY;
             DEFINE FIELD updated_at ON user TYPE datetime VALUE time::now();
         """
