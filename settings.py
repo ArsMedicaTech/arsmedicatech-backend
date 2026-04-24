@@ -182,3 +182,7 @@ FRONTEND_REDIRECT = os.environ.get("FRONTEND_REDIRECT", "http://localhost:3000")
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://localhost:9000")
 MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
+
+MINIO_ENCOUNTER_RECORDINGS_BUCKET = os.environ.get(
+    "MINIO_ENCOUNTER_RECORDINGS_BUCKET", "encounter-recordings"
+)

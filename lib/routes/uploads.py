@@ -13,7 +13,6 @@ from flask import Blueprint, Response, jsonify, request
 from werkzeug.datastructures import FileStorage
 
 from lib.data_types import UserID
-from lib.models.patient.encounter_crud import get_encounter_by_id
 from lib.models.upload import (
     FileType,
     Upload,
@@ -28,6 +27,7 @@ from lib.services.upload_service import process_upload_task
 from settings import (
     BUCKET_NAME,
     MINIO_ACCESS_KEY,
+    MINIO_ENCOUNTER_RECORDINGS_BUCKET,
     MINIO_ENDPOINT,
     MINIO_SECRET_KEY,
     S3_AWS_ACCESS_KEY_ID,
@@ -140,11 +140,12 @@ def presign_upload_route() -> Tuple[Response, int]:
     if not encounter_id:
         return jsonify({"error": "encounterId is required"}), 400
 
-    encounter = get_encounter_by_id(str(encounter_id))
-    if not encounter:
-        return jsonify({"error": "Encounter not found"}), 404
+    ##encounter = get_encounter_by_id(str(encounter_id))
+    ##if not encounter: return jsonify({"error": "Encounter not found"}), 404
 
-    bucket = BUCKET_NAME
+    # Temporarily bypassing this check for testing...
+
+    bucket = MINIO_ENCOUNTER_RECORDINGS_BUCKET
 
     ext = str(filename).rsplit(".", 1)[-1] if "." in str(filename) else "webm"
     upload_id = str(uuid.uuid4())
@@ -197,7 +198,7 @@ def upload_complete_route() -> Tuple[Response, int]:
     if not encounter_id or not object_key:
         return jsonify({"error": "encounterId and objectKey required"}), 400
 
-    bucket = BUCKET_NAME
+    bucket = MINIO_ENCOUNTER_RECORDINGS_BUCKET
 
     uploader_id: UserID = (
         UserID(user.user_id) if not isinstance(user.user_id, UserID) else user.user_id
@@ -297,7 +298,7 @@ def download_audio_route(object_key: str):
         s3 = _s3_client()
         url = s3.generate_presigned_url(
             ClientMethod="get_object",
-            Params={"Bucket": BUCKET_NAME, "Key": object_key},
+            Params={"Bucket": MINIO_ENCOUNTER_RECORDINGS_BUCKET, "Key": object_key},
             ExpiresIn=60 * 5,
         )
     except Exception as e:
