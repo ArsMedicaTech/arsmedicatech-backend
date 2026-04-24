@@ -9,7 +9,7 @@ from typing import Any, Dict, Tuple
 import boto3  # type: ignore
 from amt_nano.db.surreal import DbController
 from botocore.config import Config as BotoConfig  # type: ignore
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, stream_with_context
 from werkzeug.datastructures import FileStorage
 
 from lib.data_types import UserID
@@ -296,14 +296,29 @@ def download_audio_route(object_key: str):
 
     try:
         s3 = _s3_client()
-        url = s3.generate_presigned_url(
-            ClientMethod="get_object",
-            Params={"Bucket": MINIO_ENCOUNTER_RECORDINGS_BUCKET, "Key": object_key},
-            ExpiresIn=60 * 5,
+        obj = s3.get_object(
+            Bucket=MINIO_ENCOUNTER_RECORDINGS_BUCKET,
+            Key=object_key,
         )
+        body = obj["Body"]
+        content_type = obj.get("ContentType") or "application/octet-stream"
+        content_length = obj.get("ContentLength")
     except Exception as e:
-        logger.error(f"Failed to generate presigned download url: {e}")
-        return jsonify({"error": "Failed to generate presigned download url"}), 500
+        logger.error(f"Failed to fetch audio from storage: {e}")
+        return jsonify({"error": "Failed to fetch audio"}), 500
 
-    # Redirect the client to the presigned URL
-    return Response(status=302, headers={"Location": url})
+    def generate():
+        for chunk in iter(lambda: body.read(1024 * 512), b""):
+            yield chunk
+
+    resp = Response(
+        stream_with_context(generate()),
+        mimetype=content_type,
+        direct_passthrough=True,
+    )
+    if content_length is not None:
+        resp.headers["Content-Length"] = str(content_length)
+    resp.headers["Content-Disposition"] = (
+        f'inline; filename="{os.path.basename(object_key)}"'
+    )
+    return resp
