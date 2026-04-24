@@ -280,3 +280,29 @@ def get_upload_route(upload_id: str) -> Tuple[Response, int]:
     if not upload:
         return jsonify({"error": "Upload not found"}), 404
     return jsonify(upload), 200
+
+
+@uploads_bp.route("/api/uploads/audio/<path:object_key>", methods=["GET"])
+@require_auth
+def download_audio_route(object_key: str):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # TODO: IMPORTANT: authorize access:
+    # - look up encounter id from object_key (it’s in the key)
+    # - confirm user can access that encounter (practitioner relationship, etc.)
+
+    try:
+        s3 = _s3_client()
+        url = s3.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": BUCKET_NAME, "Key": object_key},
+            ExpiresIn=60 * 5,
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate presigned download url: {e}")
+        return jsonify({"error": "Failed to generate presigned download url"}), 500
+
+    # Redirect the client to the presigned URL
+    return Response(status=302, headers={"Location": url})
