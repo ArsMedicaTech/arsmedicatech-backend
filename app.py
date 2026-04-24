@@ -492,6 +492,12 @@ def register_page():
     # 1. Clear old states to prevent Mismatching State errors
     clear_keycloak_states()
 
+    # Capture the localhost URL from Flutter and store it
+    target = request.args.get("redirect_to")
+    if target:
+        session["active_frontend_url"] = target
+        session.modified = True
+
     redirect_uri = url_for("authorize", _external=True)
 
     # Ensure session is saved before redirecting (authlib stores OAuth state in session)
@@ -512,6 +518,12 @@ def login() -> Tuple[Response, int]:
     # 1. Clear old states to prevent Mismatching State errors
     clear_keycloak_states()
 
+    # Capture the localhost URL from Flutter and store it
+    target = request.args.get("redirect_to")
+    if target:
+        session["active_frontend_url"] = target
+        session.modified = True
+
     redirect_uri = url_for("authorize", _external=True)
 
     # Ensure session is saved before redirecting (authlib stores OAuth state in session)
@@ -527,6 +539,10 @@ def authorize():
     Handle Keycloak OAuth callback and create/update user in SurrealDB.
     This is called after a user authenticates or registers via Keycloak.
     """
+    # 1. Determine our final destination
+    # We check the session first, then fall back to the (Kubernetes) Env Var
+    final_frontend = session.get("active_frontend_url") or FRONTEND_REDIRECT
+
     try:
         # Log session state for debugging
         logger.debug(
@@ -547,18 +563,18 @@ def authorize():
                     "OAuth code already used or expired. Checking existing session..."
                 )
                 if "user_id" in session:
-                    return redirect(FRONTEND_REDIRECT)
+                    return redirect(final_frontend)
                 # If no session exists, we must force a re-login
                 return redirect(url_for("login", prompt="login"))
 
             logger.error(f"Handshake failed: {e}")
-            return redirect(f"{FRONTEND_REDIRECT}?error=auth_failed")
+            return redirect(f"{final_frontend}?error=auth_failed")
 
         user_info = token.get("userinfo")
 
         if not user_info:
             logger.error("No user info in Keycloak token")
-            return redirect(f"{FRONTEND_REDIRECT}?error=no_user_info")
+            return redirect(f"{final_frontend}?error=no_user_info")
 
         # Extract user information from Keycloak
         keycloak_user_id = user_info.get("sub")
@@ -586,7 +602,7 @@ def authorize():
 
         if not keycloak_user_id or not email:
             logger.error(f"Missing required user info from Keycloak: {user_info}")
-            return redirect(f"{FRONTEND_REDIRECT}?error=missing_user_info")
+            return redirect(f"{final_frontend}?error=missing_user_info")
 
         # Check if user exists in SurrealDB
         user_service = UserService()
@@ -658,7 +674,7 @@ def authorize():
                         f"Failed to create Keycloak user in SurrealDB: {create_user_result['message']}"
                     )
                     return redirect(
-                        f"{FRONTEND_REDIRECT}?error=user_creation_failed&message={create_user_result['message']}"
+                        f"{final_frontend}?error=user_creation_failed&message={create_user_result['message']}"
                     )
 
                 existing_user = create_user_result["user"]
@@ -681,7 +697,7 @@ def authorize():
 
             if not user_session:
                 logger.error("Failed to create user session")
-                return redirect(f"{FRONTEND_REDIRECT}?error=session_creation_failed")
+                return redirect(f"{final_frontend}?error=session_creation_failed")
 
             # Store user info in session
             session["user"] = user_info
@@ -706,11 +722,11 @@ def authorize():
         finally:
             user_service.close()
 
-        return redirect(f"{FRONTEND_REDIRECT}?ott={ott}")
+        return redirect(f"{final_frontend}?ott={ott}")
 
     except Exception as e:
         logger.error(f"Error in Keycloak authorize callback: {e}", exc_info=True)
-        return redirect(f"{FRONTEND_REDIRECT}?error=auth_error&message={str(e)}")
+        return redirect(f"{final_frontend}?error=auth_error&message={str(e)}")
 
 
 @app.route("/api/auth/exchange", methods=["POST"])
