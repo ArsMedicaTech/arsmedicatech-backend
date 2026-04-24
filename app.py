@@ -114,6 +114,7 @@ from lib.routes.user_notes import (
 )
 from lib.routes.users import (
     activate_user_route,
+    admin_encrypt_route,
     change_password_route,
     check_users_exist_route,
     create_user_programmatically_route,
@@ -888,6 +889,17 @@ def create_user_programmatically() -> Tuple[Response, int]:
     :return: Response object with user creation status.
     """
     return create_user_programmatically_route()
+
+
+@app.route("/api/admin/encrypt", methods=["POST"])
+@require_super_admin_key
+def admin_encrypt() -> Tuple[Response, int]:
+    """
+    Encrypt passed string values using the encryption service (super admin only).
+    Requires X-Super-Admin-Key header. Body: JSON object with string values.
+    :return: Response with encrypted_values map.
+    """
+    return admin_encrypt_route()
 
 
 @app.route("/api/admin/setup", methods=["POST"])

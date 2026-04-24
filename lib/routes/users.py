@@ -1058,3 +1058,44 @@ def create_user_programmatically_route() -> Tuple[Response, int]:
     except Exception as e:
         logger.error(f"Error creating user programmatically: {e}")
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
+def admin_encrypt_route() -> Tuple[Response, int]:
+    """
+    Encrypt one or more string values using the encryption service (super admin only).
+
+    Expects a JSON object with string values. Returns the same keys with encrypted values.
+
+    Example request:
+    POST /api/admin/encrypt
+    Headers:
+        X-Super-Admin-Key: <your-ENCRYPTION_KEY-from-.env>
+    Body:
+    {"my_random_string": "SOME_RANDOM_STRING"}
+
+    Example response:
+    {"encrypted_values": {"my_random_string": "<encrypted_ciphertext>"}}
+
+    :return: Response object with encrypted_values map.
+    """
+    try:
+        data = request.get_json()
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "JSON object with string values required"}), 400
+
+        from amt_nano.services.encryption import get_encryption_service
+
+        enc = get_encryption_service()
+        encrypted: Dict[str, str] = {}
+        for k, v in data.items():
+            if not isinstance(v, str):
+                return (
+                    jsonify({"error": f"Value for key '{k}' must be a string"}),
+                    400,
+                )
+            encrypted[k] = enc.encrypt_api_key(v)
+
+        return jsonify({"encrypted_values": encrypted}), 200
+    except Exception as e:
+        logger.error(f"Error in admin encrypt: {e}")
+        return jsonify({"error": "Internal server error"}), 500
