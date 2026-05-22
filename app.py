@@ -2066,5 +2066,20 @@ def external_health_check() -> Tuple[Response, int]:
     return jsonify({"status": "healthy"}), 200
 
 
+@app.route("/api/debug-sentry-error")
+def api_trigger_error():
+    division_by_zero = 1 / 0
+    return "This will never be reached"
+
+
+@app.route("/api/debug-sentry-log")
+def api_trigger_error_log():
+    from datetime import datetime
+
+    timestamp = datetime.now().isoformat()
+    logger.error(f"This is a test error log for Sentry integration at {timestamp}")
+    return "Logged an error to Sentry"
+
+
 if __name__ == "__main__":
     app.run(port=PORT, debug=DEBUG, host=HOST)
