@@ -10,6 +10,14 @@ from lib.logger import Logger
 logger: Logger = Logger()
 
 
+# import logging
+# logging.basicConfig(level=logging.INFO)
+
+# ── 1. Pull secrets into os.environ FIRST ────────────────────────────────────
+from vault_loader import load_vault_secrets
+
+load_vault_secrets()  # reads SERVICE_NAME + VAULT_DB_ROLES from env
+
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
 

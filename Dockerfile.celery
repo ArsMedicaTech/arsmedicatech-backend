@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY ./lib ./lib
 COPY ./settings.py .
+COPY ./vault_loader.py .
 COPY ./celery_worker.py .
 
 # Set environment variables for Redis broker
