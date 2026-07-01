@@ -169,6 +169,8 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             if not prompt:
                 return jsonify({"error": "No prompt provided"}), 400
 
+            system_context = data.get("system_context")
+
             # Determine thread ID: either provided directly or find/create based on context
             thread_id = data.get("thread_id")
             context = data.get(
@@ -257,6 +259,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                         history=history,
                         response_format=response_format,
                         client_mcp_config=client_mcp_config,
+                        system_prompt=system_context or DEFAULT_SYSTEM_PROMPT
                     )
                 )
             else:
