@@ -508,7 +508,10 @@ def register_page():
 
     # Passing kc_action="register" tells Keycloak's authorize endpoint
     # to jump directly to the registration form instead of the login form.
-    return oauth.keycloak.authorize_redirect(redirect_uri, kc_action="register")
+    #return oauth.keycloak.authorize_redirect(redirect_uri, kc_action="register")
+
+    # add prompt="login" to force Keycloak to ignore any existing session:
+    return oauth.keycloak.authorize_redirect(redirect_uri, kc_action="register", prompt="login")
 
 
 @app.route("/api/auth/login", methods=["POST"])
