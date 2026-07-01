@@ -22,7 +22,7 @@ from settings import (
     COGNITO_DOMAIN,
     LOGOUT_URI,
     REDIRECT_URI,
-    logger,
+    logger, KEYCLOAK_AUTH_HOST, KEYCLOAK_REALM, FRONTEND_REDIRECT,
 )
 
 
@@ -400,12 +400,12 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
 
 
 def auth_logout_route() -> BaseResponse:
+    id_token = session.get('auth_token', '')
     session.clear()
 
     logout_url = (
-        f"https://{COGNITO_DOMAIN}/logout?"
-        f"client_id={CLIENT_ID}&"
-        f"logout_uri={parse.quote(LOGOUT_URI)}"
+        f"https://{KEYCLOAK_AUTH_HOST}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/logout"
+        f"?post_logout_redirect_uri={FRONTEND_REDIRECT}"
+        f"&id_token_hint={id_token}"
     )
-
     return redirect(logout_url)

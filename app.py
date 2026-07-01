@@ -841,7 +841,8 @@ def logout() -> Tuple[Response, int]:
     session.pop("user", None)
     return redirect(
         f"https://{KEYCLOAK_AUTH_HOST}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/logout"
-        f"?post_logout_redirect_uri={url_for('index', _external=True)}"
+        f"?post_logout_redirect_uri={FRONTEND_REDIRECT}"
+        f"&id_token_hint={session.get('auth_token', '')}"
     )
 
 
