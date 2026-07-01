@@ -250,7 +250,7 @@ class UserService:
             # logger.debug(f"Database create result type: {type(result)}")
 
             if result and result["id"]:
-                user.id = result["id"]
+                user.id = str(result["id"])
 
                 # Ensure FHIR linkage IDs are populated and consistent with role
                 try:
@@ -606,6 +606,14 @@ class UserService:
             logger.error(f"Error getting all users: {e}")
             return []
 
+    @staticmethod
+    def _normalize_user_id(user_id: str) -> str:
+        """Strip any existing table prefix so we never build a double-prefixed record ID."""
+        for prefix in ("User:", "user:"):
+            if user_id.startswith(prefix):
+                return user_id[len(prefix):]
+        return user_id
+
     def update_user(self, user_id: str, updates: Dict[str, Any]) -> UpdateUserResult:
         """
         Update user information
@@ -619,7 +627,7 @@ class UserService:
             updates.pop("id", None)
             updates.pop("created_at", None)
 
-            result = self.db.update(f"User:{user_id}", updates)
+            result = self.db.update(f"User:{self._normalize_user_id(user_id)}", updates)
             if result:
                 return {
                     "success": True,
@@ -670,7 +678,7 @@ class UserService:
             new_hash = User.hash_password(new_password)
 
             # Update password
-            result = self.db.update(f"User:{user_id}", {"password_hash": new_hash})
+            result = self.db.update(f"User:{self._normalize_user_id(user_id)}", {"password_hash": new_hash})
             if result:
                 return True, "Password changed successfully"
             else:
@@ -686,7 +694,7 @@ class UserService:
         :return: (success, message)
         """
         try:
-            result = self.db.update(f"User:{user_id}", {"is_active": False})
+            result = self.db.update(f"User:{self._normalize_user_id(user_id)}", {"is_active": False})
             if result:
                 return True, "User deactivated successfully"
             else:
@@ -703,7 +711,7 @@ class UserService:
         :return: (success, message)
         """
         try:
-            result = self.db.update(f"User:{user_id}", {"is_active": True})
+            result = self.db.update(f"User:{self._normalize_user_id(user_id)}", {"is_active": True})
             if result:
                 return True, "User activated successfully"
             else:
