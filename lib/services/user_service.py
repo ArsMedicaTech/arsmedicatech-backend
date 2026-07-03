@@ -10,6 +10,7 @@ from amt_nano.db.surreal import DbController
 from lib.models.user.user import User, UserRoles
 from lib.models.user.user_session import UserSession
 from lib.models.user.user_settings import UserSettings
+from lib.services.fhir_client import ensure_practitioner
 from settings import logger
 
 
@@ -289,6 +290,20 @@ class UserService:
                                 "fhir_patient_id": user.fhir_patient_id,
                             },
                         )
+
+                    # Ensure the actual Practitioner resource exists in HAPI FHIR
+                    if user.role == "provider" and user.fhir_practitioner_id:
+                        try:
+                            ensure_practitioner(
+                                practitioner_id=user.fhir_practitioner_id,
+                                first_name=user.first_name,
+                                last_name=user.last_name,
+                                email=user.email,
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to ensure Practitioner/{user.fhir_practitioner_id} for user {user.id}: {e}"
+                            )
                 except Exception as e:
                     logger.error(
                         f"Failed to populate FHIR linkage IDs for user {user.id}: {e}"
