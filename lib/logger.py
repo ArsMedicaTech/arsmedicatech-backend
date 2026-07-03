@@ -251,16 +251,19 @@ class Logger:
     Custom logger class that uses the standard logging library with a custom formatter.
     """
 
-    def __init__(self, name: str = "logger", level: int = logging.WARN) -> None:
+    def __init__(self, name: str = "logger", level: int = logging.WARN, sentry: Optional["SentryLogger"] = None) -> None:
         """
         Initialize the logger with a name and logging level.
         :param name: The name of the logger.
         :param level: The logging level (default is logging.WARN).
+        :param sentry: Optional SentryLogger instance; when set, error() calls are
+                       also forwarded to Sentry automatically.
         :return: None
         """
         logging.basicConfig()
         self._name = name
         self._level = level
+        self._sentry = sentry
         self._logger = logging.getLogger(name)
         # self._logger = logging.getLogger(__name__)
         self._logger = logging.getLogger(name)
@@ -329,3 +332,12 @@ class Logger:
         :return: None
         """
         self._logger.error(msg, *args, **kwargs)
+        if self._sentry is not None:
+            exc_info = kwargs.get("exc_info")
+            exc, tb = (None, None)
+            if exc_info is True:
+                exc_info = sys.exc_info()
+            if isinstance(exc_info, tuple) and len(exc_info) == 3:
+                _, exc, tb = exc_info
+            err = exc if isinstance(exc, BaseException) else RuntimeError(msg % args if args else msg)
+            self._sentry.capture(err, tb)

@@ -5,7 +5,7 @@ from os.path import dirname, join
 
 from dotenv import load_dotenv
 
-from lib.logger import Logger
+from lib.logger import Logger, SentryLogger
 
 logger: Logger = Logger()
 
@@ -91,6 +91,7 @@ if not SENTRY_DSN:
 
 SentryLogger.init(SENTRY_DSN)
 sentry_logger: SentryLogger = SentryLogger()
+logger._sentry = sentry_logger
 
 DEMO_ADMIN_USERNAME = os.environ.get("DEMO_ADMIN_USERNAME", "admin")
 DEMO_ADMIN_PASSWORD = os.environ.get("DEMO_ADMIN_PASSWORD", "admin")
