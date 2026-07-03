@@ -100,6 +100,7 @@ from lib.routes.patients import (
     update_encounter_route,
 )
 from lib.routes.testing import (
+    debug_sentry_route,
     debug_session_route,
     test_crud_route,
     test_surrealdb_route,
@@ -971,6 +972,15 @@ def debug_session() -> Tuple[Response, int]:
     :return: Response object with session data.
     """
     return debug_session_route()
+
+
+@app.route("/api/debug/sentry", methods=["GET"])
+def debug_sentry() -> Tuple[Response, int]:
+    """
+    Debug endpoint that fires a test Sentry event with all Config values.
+    :return: Response confirming the event was sent.
+    """
+    return debug_sentry_route()
 
 
 @app.route("/api/users/search", methods=["GET"])
