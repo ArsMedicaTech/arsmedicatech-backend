@@ -329,6 +329,7 @@ def get_current_user_info_route() -> Tuple[Response, int]:
                     f"Patient user missing fhir_patient_id in /auth/me response: {user.id}"
                 )
 
+            token = current_user.session_token if current_user else None
             return (
                 jsonify(
                     {
@@ -345,7 +346,8 @@ def get_current_user_info_route() -> Tuple[Response, int]:
                             "fhir_patient_id": user.fhir_patient_id,
                             "is_active": user.is_active,
                             "created_at": user.created_at,
-                        }
+                        },
+                        "token": token,
                     }
                 ),
                 200,
