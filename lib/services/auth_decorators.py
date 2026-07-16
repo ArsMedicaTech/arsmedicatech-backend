@@ -77,6 +77,7 @@ def require_auth(f: Callable[..., Any]) -> Callable[..., Any]:
                     user_id=str(user.id),
                     username=user.username,
                     role=user.role,
+                    session_token=session.get("auth_token"),
                 )
                 g.user_session = user_session
                 g.user_role = user.role
