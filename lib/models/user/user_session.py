@@ -136,11 +136,8 @@ class UserSession:
             role=data.get("role", "patient"),
             created_at=data.get("created_at"),
             expires_at=data.get("expires_at"),
+            session_token=data.get("session_token"),
         )
-        # Set the token from the data if it exists
-        if "session_token" in data:
-            session.session_token = data["session_token"]
-        print("1`1```1212`23` ABOUT TO RETURN:", session)
         return session
 
     @classmethod
