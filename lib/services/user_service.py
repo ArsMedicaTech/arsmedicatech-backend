@@ -192,6 +192,14 @@ class UserService:
         """
         try:
             # Validate input
+            if is_federated and not external_id:
+                logger.warning("Refusing to create federated user without an external identity")
+                return CreateUserResult(
+                    success=False,
+                    message="Federated users require an external identity",
+                    user=None,
+                )
+
             valid, msg = User.validate_username(username)
             if not valid:
                 logger.debug(f"Failed to validate username:{msg}")
@@ -255,18 +263,19 @@ class UserService:
 
                 # Ensure FHIR linkage IDs are populated and consistent with role
                 try:
-                    user_id_str = str(user.id) if user.id is not None else ""
-                    user_id_suffix = (
-                        user_id_str.split(":", 1)[1] if ":" in user_id_str else user_id_str
-                    )
-
                     if user.role == "provider":
                         user.fhir_patient_id = None
-                        if not user.fhir_practitioner_id:
-                            user.fhir_practitioner_id = f"dev-provider-{user_id_suffix}"
+                        if not user.fhir_practitioner_id and user.external_id:
+                            user.fhir_practitioner_id = f"pr-{user.external_id}"
                     elif user.role == "patient":
                         user.fhir_practitioner_id = None
                         if not user.fhir_patient_id:
+                            user_id_str = str(user.id) if user.id is not None else ""
+                            user_id_suffix = (
+                                user_id_str.split(":", 1)[1]
+                                if ":" in user_id_str
+                                else user_id_str
+                            )
                             user.fhir_patient_id = f"dev-patient-{user_id_suffix}"
                     else:
                         user.fhir_practitioner_id = None

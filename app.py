@@ -628,14 +628,20 @@ def authorize():
             if existing_user:
                 # User exists - update if needed
                 logger.debug(f"Existing Keycloak user found: {existing_user.id}")
-                # Update external_id if it wasn't set before
-                if (
+                needs_identity_update = (
                     not existing_user.external_id
                     or existing_user.auth_provider != "keycloak"
-                ):
+                )
+                needs_practitioner_update = (
+                    existing_user.role == "provider"
+                    and not existing_user.fhir_practitioner_id
+                )
+                if needs_identity_update or needs_practitioner_update:
                     existing_user.external_id = keycloak_user_id
                     existing_user.auth_provider = "keycloak"
                     existing_user.is_federated = True
+                    if needs_practitioner_update:
+                        existing_user.fhir_practitioner_id = f"pr-{keycloak_user_id}"
                     user_service.update_user(
                         str(existing_user.id), existing_user.to_dict()
                     )

@@ -151,7 +151,11 @@ def return_jsonify_error(response: ErrorResponse, status: int) -> Tuple[Response
 
 
 def create_user(
-    user_service: UserService, username: str, email: str, role_from_query: str
+    user_service: UserService,
+    username: str,
+    email: str,
+    external_id: str,
+    role_from_query: str,
 ) -> Union[User, Tuple[Response, int]]:
     # Create user with a random password (not used for federated login)
     random_password = secrets.token_urlsafe(16)
@@ -166,6 +170,8 @@ def create_user(
             last_name="",
             role=role_from_query,
             is_federated=True,  # Mark as federated user
+            auth_provider="cognito",
+            external_id=external_id,
         ),
     )
 
@@ -276,6 +282,7 @@ def _handle_new_user(
         user_service,
         username=claims["username"],
         email=claims["email"],
+        external_id=claims["sub"],
         role_from_query=role_from_query,
     )
 
@@ -301,11 +308,22 @@ def get_or_create_user(
     Gets a user by email. If they exist, handles update or conflict.
     If they don't exist, creates them.
     """
-    print("WE ARE IN GET OR CREATE USER")
-    print(intent, claims)
-    user = user_service.get_user_by_email(claims["email"])
+    if not claims["sub"] or not claims["email"]:
+        logger.error("Cognito claims are missing a stable identity or email")
+        return None
+
+    user = user_service.get_user_by_external_id(claims["sub"], "cognito")
+    if not user:
+        user = user_service.get_user_by_email(claims["email"])
 
     if user:
+        if not user.external_id or user.auth_provider != "cognito":
+            user.external_id = claims["sub"]
+            user.auth_provider = "cognito"
+            user.is_federated = True
+            if user.id is not None:
+                user_service.update_user(str(user.id), user.to_dict())
+
         # User exists, handle sign-in or sign-up conflict
         error = _handle_existing_user(user, intent, user_service, claims)
         if error:
