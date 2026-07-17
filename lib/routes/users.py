@@ -858,6 +858,7 @@ def get_user_profile_route() -> Tuple[Response, int]:
                 "phone": user.phone,
                 "is_active": user.is_active,
                 "created_at": user.created_at,
+                "is_first_time": user.is_first_time,
             }
             logger.debug(f"Returning profile data: {profile_data}")
 
