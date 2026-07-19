@@ -418,17 +418,12 @@ def cognito_login_route() -> Union[Tuple[Response, int], BaseResponse]:
 
 
 def auth_logout_route() -> BaseResponse:
-    id_token = session.get('auth_token', '')
     session.clear()
     
     params = {
         "post_logout_redirect_uri": FRONTEND_REDIRECT,
         "client_id": KEYCLOAK_CLIENT_ID,
     }
-    
-    if id_token:
-        # only send the hint when it's real
-        params["id_token_hint"] = id_token
 
     logout_url = (
         f"https://{KEYCLOAK_AUTH_HOST}/realms/{KEYCLOAK_REALM}"
