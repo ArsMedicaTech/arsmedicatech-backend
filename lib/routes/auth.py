@@ -427,7 +427,7 @@ def auth_logout_route() -> BaseResponse:
 
     logout_url = (
         f"https://{KEYCLOAK_AUTH_HOST}/realms/{KEYCLOAK_REALM}"
-        f"/protocol/openid-connect/logout?{urlencode(params)}"
+        f"/protocol/openid-connect/logout?{parse.urlencode(params)}"
     )
     
     return redirect(logout_url)
