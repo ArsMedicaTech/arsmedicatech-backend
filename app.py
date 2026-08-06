@@ -48,6 +48,10 @@ from lib.routes.administration import (
     get_patients_route,
     get_providers_route,
 )
+from lib.routes.admin_provider_identity import (
+    get_oscar_provider_candidates_route,
+    link_oscar_provider_route,
+)
 from lib.routes.api_keys import (
     create_api_key_route,
     deactivate_api_key_route,
@@ -2051,6 +2055,26 @@ def get_administrators(org_id: str) -> Tuple[Response, int]:
     :return: Response object with administrators data.
     """
     return get_administrators_route(org_id)
+
+
+@app.route("/api/admin/providers/<user_id>/link-oscar-provider", methods=["POST"])
+def link_oscar_provider(user_id: str) -> Tuple[Response, int]:
+    """
+    Link an AMT provider account to an Oscar provider_no identity.
+    :param user_id: The ID of the provider user to link.
+    :return: Response object with the result of the link operation.
+    """
+    return link_oscar_provider_route(user_id)
+
+
+@app.route("/api/admin/providers/<user_id>/oscar-candidates", methods=["GET"])
+def get_oscar_provider_candidates(user_id: str) -> Tuple[Response, int]:
+    """
+    Get Oscar-synced Practitioner candidates matching the provider user's email.
+    :param user_id: The ID of the provider user to look up candidates for.
+    :return: Response object with candidate Practitioner resources.
+    """
+    return get_oscar_provider_candidates_route(user_id)
 
 
 @app.route("/api/ddx", methods=["POST"])
