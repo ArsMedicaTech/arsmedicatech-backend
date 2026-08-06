@@ -425,6 +425,133 @@ def _contains_patient_reference(obj: Any, fhir_patient_id: str) -> bool:
     return False
 
 
+# CareTeam-scoped provider authorization cache and constants.
+_care_team_cache: Dict[Tuple[str, str], Tuple[bool, float]] = {}
+CARE_TEAM_CACHE_TTL = 60
+LONGITUDINAL_CATEGORY = "LA28865-6"
+MAX_PANEL_SIZE = 500
+
+
+def _strip_patient_prefix(value: str) -> str:
+    """Return a bare patient id from 'Patient/{id}' or an absolute reference URL."""
+    if not isinstance(value, str):
+        return value
+    marker = "/Patient/"
+    idx = value.rfind(marker)
+    if idx != -1:
+        return value[idx + len(marker):]
+    if value.startswith("Patient/"):
+        return value[8:]
+    return value
+
+
+def _flush_care_team_cache() -> None:
+    """Flush the in-process CareTeam membership cache."""
+    _care_team_cache.clear()
+
+
+def _is_on_care_team(practitioner_id: str, patient_id: str) -> bool:
+    """Active-participant check. Fail closed on any upstream error."""
+    cache_key = (practitioner_id, patient_id)
+    now = time.time()
+    cached = _care_team_cache.get(cache_key)
+    if cached is not None:
+        result, expires_at = cached
+        if now < expires_at:
+            return result
+
+    result = False
+    try:
+        url = f"{FHIR_GATEWAY_URL.rstrip('/')}/CareTeam"
+        params = {
+            "patient": patient_id,
+            "participant": f"Practitioner/{practitioner_id}",
+            "status": "active",
+            "_summary": "count",
+        }
+        resp = requests.get(url, params=params, headers=_fhir_headers(), timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            result = data.get("total", 0) > 0
+        else:
+            logger.warning(f"CareTeam membership query failed: status={resp.status_code}")
+    except Exception as exc:
+        logger.warning(f"CareTeam membership query error: {exc}")
+
+    _care_team_cache[cache_key] = (result, now + CARE_TEAM_CACHE_TTL)
+    return result
+
+
+def _get_provider_panel(practitioner_id: str) -> List[str]:
+    """Patient ids where this practitioner is an active CareTeam participant.
+
+    Raises ValueError if the panel exceeds MAX_PANEL_SIZE or the query fails.
+    """
+    try:
+        url = f"{FHIR_GATEWAY_URL.rstrip('/')}/CareTeam"
+        params = {
+            "participant": f"Practitioner/{practitioner_id}",
+            "status": "active",
+        }
+        resp = requests.get(url, params=params, headers=_fhir_headers(), timeout=10)
+        if resp.status_code != 200:
+            logger.warning(f"Provider panel query failed: status={resp.status_code}")
+            raise ValueError("Failed to load provider panel")
+
+        data = resp.json()
+        panel: List[str] = []
+        for entry in data.get("entry", []):
+            resource = entry.get("resource", {})
+            subject = resource.get("subject", {})
+            ref = subject.get("reference", "")
+            patient_id = _strip_patient_prefix(ref)
+            if patient_id:
+                panel.append(patient_id)
+
+        if len(panel) > MAX_PANEL_SIZE:
+            logger.warning(
+                f"Provider panel exceeds MAX_PANEL_SIZE: {len(panel)} > {MAX_PANEL_SIZE}"
+            )
+            raise ValueError(
+                f"Provider panel exceeds {MAX_PANEL_SIZE} patients; "
+                "panel-based search is not supported"
+            )
+        return panel
+    except ValueError:
+        raise
+    except Exception as exc:
+        logger.warning(f"Provider panel query error: {exc}")
+        raise ValueError("Failed to load provider panel")
+
+
+def _extract_patient_reference(body: Dict[str, Any]) -> Optional[str]:
+    """Bare patient id from a resource body, checking subject/patient/beneficiary."""
+    if not isinstance(body, dict):
+        return None
+    for field in ("subject", "patient", "beneficiary"):
+        value = body.get(field)
+        if not value:
+            continue
+        if isinstance(value, dict):
+            ref = value.get("reference")
+            if isinstance(ref, str):
+                return _strip_patient_prefix(ref)
+        elif isinstance(value, str):
+            return _strip_patient_prefix(value)
+    return None
+
+
+def _extract_resource_patient_id(
+    body: Dict[str, Any], resource_type: str, resource_id: Optional[str]
+) -> Optional[str]:
+    """Best-effort patient id from a fetched resource body."""
+    if not isinstance(body, dict):
+        return None
+    if resource_type == "Patient":
+        return body.get("id") or resource_id
+    return _extract_patient_reference(body)
+
+
 def _enforce_scope(
     resource_type: str,
     resource_id: Optional[str],
@@ -438,13 +565,92 @@ def _enforce_scope(
         return
 
     if role == "provider":
-        if resource_type == "Patient":
-            # TODO: TEMPORARY — unscoped provider access to Patient search/read.
-            # No panel/care-team restriction yet. Do not extend to other
-            # PATIENT_DATA_TYPES without deciding the real scope policy.
+        practitioner_id = user.fhir_practitioner_id
+        if not practitioner_id:
+            logger.warning(
+                f"Provider {user.id} ({user.username}) has no fhir_practitioner_id; denying FHIR access"
+            )
+            raise ValueError("Provider account is not linked to a Practitioner record")
+
+        # CareTeam itself must be handled before the generic patient-data branch.
+        if resource_type == "CareTeam":
+            if method in ("POST", "PUT"):
+                if not body:
+                    raise ValueError("Write request must include a FHIR resource body")
+                patient_id = _extract_patient_reference(body)
+                if not patient_id:
+                    raise ValueError("CareTeam body must reference a patient")
+                if not _is_on_care_team(practitioner_id, patient_id):
+                    raise ValueError(
+                        "Provider is not a participant on this patient's CareTeam"
+                    )
+                return
+            if method == "GET":
+                if resource_id is None:
+                    patient_values = params.get(PATIENT_SEARCH_PARAM["CareTeam"], [])
+                    if not patient_values:
+                        raise ValueError(
+                            "Provider CareTeam search must be scoped to a patient"
+                        )
+                    for v in patient_values:
+                        if not _is_on_care_team(practitioner_id, _strip_patient_prefix(v)):
+                            raise ValueError(
+                                "Provider is not a participant on this patient's CareTeam"
+                            )
+                    return
+                # Read-by-id requires fetch-then-authorize in _forward_request.
+                g.fhir_post_auth_patient_check = True
+                return
+            raise ValueError(f"Method {method} not allowed for provider on CareTeam")
+
+        if resource_type not in PATIENT_DATA_TYPES:
             return
-        if resource_type in PATIENT_DATA_TYPES and resource_type not in ("Practitioner", "Organization"):
-            raise ValueError("Provider access to patient data is not yet configured")
+
+        if resource_type == "Patient":
+            if resource_id is not None:
+                g.fhir_post_auth_patient_check = True
+                return
+            panel = _get_provider_panel(practitioner_id)
+            if not panel:
+                # Signal fhir_proxy() to return an empty searchset without calling upstream.
+                g.fhir_empty_panel = True
+                return
+            params["_id"] = [",".join(panel)]
+            return
+
+        # Remaining patient-scoped types.
+        search_param = PATIENT_SEARCH_PARAM.get(resource_type)
+        if method == "GET":
+            if resource_id is not None:
+                g.fhir_post_auth_patient_check = True
+                return
+            if not search_param:
+                raise ValueError(f"Provider search is not supported for {resource_type}")
+            patient_values = params.get(search_param, [])
+            if not patient_values:
+                raise ValueError("Provider searches must be scoped to a specific patient")
+            for v in patient_values:
+                if not _is_on_care_team(practitioner_id, _strip_patient_prefix(v)):
+                    raise ValueError(
+                        "Provider is not a participant on this patient's CareTeam"
+                    )
+            return
+
+        if method in ("POST", "PUT"):
+            if not body:
+                raise ValueError("Write request must include a FHIR resource body")
+            patient_id = _extract_patient_reference(body)
+            if not patient_id:
+                raise ValueError(
+                    f"Resource body must reference a patient for {resource_type}"
+                )
+            if not _is_on_care_team(practitioner_id, patient_id):
+                raise ValueError(
+                    "Provider is not a participant on this patient's CareTeam"
+                )
+            return
+
+        raise ValueError(f"Method {method} not allowed for provider on {resource_type}")
 
     if role != "patient":
         raise ValueError("Unsupported user role")
@@ -586,6 +792,41 @@ def _forward_request(
         _audit_log(user, method, resource_type, resource_id, query_params, 502, "allow")
         return jsonify({"error": "Upstream FHIR request failed"}), 502
 
+    if method in ("POST", "PUT", "DELETE") and resource_type == "CareTeam" and 200 <= resp.status_code < 300:
+        _flush_care_team_cache()
+
+    if getattr(g, "fhir_post_auth_patient_check", False) and 200 <= resp.status_code < 300:
+        try:
+            body_json = resp.json()
+            patient_id = _extract_resource_patient_id(body_json, resource_type, resource_id)
+            practitioner_id = user.fhir_practitioner_id
+            if (
+                not patient_id
+                or not practitioner_id
+                or not _is_on_care_team(practitioner_id, patient_id)
+            ):
+                _audit_log(
+                    user, method, resource_type, resource_id, query_params, 403, "deny"
+                )
+                return (
+                    jsonify(
+                        {
+                            "error": "Provider is not a participant on this patient's CareTeam"
+                        }
+                    ),
+                    403,
+                )
+        except ValueError:
+            _audit_log(
+                user, method, resource_type, resource_id, query_params, 403, "deny"
+            )
+            return (
+                jsonify(
+                    {"error": "Provider is not a participant on this patient's CareTeam"}
+                ),
+                403,
+            )
+
     out_headers = {}
     for h in ("Content-Type", "Location", "Content-Location", "ETag", "Last-Modified"):
         if h in resp.headers:
@@ -631,6 +872,17 @@ def fhir_proxy(subpath: str) -> Response:
         return _handle_error(
             user, 403, request.method, resource_type, resource_id, params, str(exc)
         )
+
+    if getattr(g, "fhir_empty_panel", False):
+        _audit_log(user, request.method, resource_type, resource_id, params, 200, "allow")
+        return jsonify(
+            {
+                "resourceType": "Bundle",
+                "type": "searchset",
+                "total": 0,
+                "entry": [],
+            }
+        ), 200
 
     query_string = urlencode(params, doseq=True)
     upstream_url = f"{FHIR_GATEWAY_URL.rstrip('/')}/{subpath}"
