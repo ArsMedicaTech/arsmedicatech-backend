@@ -195,6 +195,10 @@ class User:
         if hasattr(user_id, "__str__"):
             user_id = str(user_id)
 
+        # Persisted records that have lost their role must not silently become patients
+        if user_id is not None and data.get("role") is None:
+            raise ValueError(f"Persisted user record {user_id} is missing a role")
+
         user = cls(
             username=str(data.get("username") or ""),
             email=str(data.get("email") or ""),
