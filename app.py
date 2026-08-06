@@ -106,6 +106,7 @@ from lib.routes.testing import (
     test_surrealdb_route,
 )
 from lib.routes.uploads import uploads_bp
+from lib.routes.fhir_proxy import fhir_proxy_bp
 from lib.routes.user_notes import (
     create_note_route,
     delete_note_route,
@@ -1972,6 +1973,7 @@ def serve_plugin_js(plugin_name: str) -> Tuple[Response, int]:
 # Register the SSE blueprint
 app.register_blueprint(sse_bp)
 app.register_blueprint(uploads_bp)
+app.register_blueprint(fhir_proxy_bp)
 
 from asgiref.wsgi import WsgiToAsgi
 
