@@ -641,15 +641,15 @@ class UserService:
     def _merge(self, thing: str, data: Dict[str, Any]) -> Any:
         """
         Merge a partial payload into an existing record instead of replacing it.
-        Uses raw SurrealQL because the bundled DbController does not expose .merge().
         """
         # SurrealDB's MERGE sets explicit None values to NONE, so strip unset fields
         cleaned = {k: v for k, v in data.items() if v is not None}
         if not cleaned:
             return None
+        tb, _, rid = thing.partition(":")
         return self.db.query(
-            "UPDATE $thing MERGE $data",
-            {"thing": thing, "data": cleaned},
+            "UPDATE type::thing($tb, $rid) MERGE $data",
+            {"tb": tb, "rid": rid, "data": cleaned},
         )
 
     def update_user(self, user_id: str, updates: Dict[str, Any]) -> UpdateUserResult:
