@@ -292,7 +292,7 @@ class UserService:
 
                     # Persist linkage into SurrealDB
                     if user.id:
-                        self.db.update(
+                        self._merge(
                             str(user.id),
                             {
                                 "fhir_practitioner_id": user.fhir_practitioner_id,
@@ -638,6 +638,20 @@ class UserService:
                 return user_id[len(prefix):]
         return user_id
 
+    def _merge(self, thing: str, data: Dict[str, Any]) -> Any:
+        """
+        Merge a partial payload into an existing record instead of replacing it.
+        Uses raw SurrealQL because the bundled DbController does not expose .merge().
+        """
+        # SurrealDB's MERGE sets explicit None values to NONE, so strip unset fields
+        cleaned = {k: v for k, v in data.items() if v is not None}
+        if not cleaned:
+            return None
+        return self.db.query(
+            "UPDATE $thing MERGE $data",
+            {"thing": thing, "data": cleaned},
+        )
+
     def update_user(self, user_id: str, updates: Dict[str, Any]) -> UpdateUserResult:
         """
         Update user information
@@ -651,7 +665,7 @@ class UserService:
             updates.pop("id", None)
             updates.pop("created_at", None)
 
-            result = self.db.update(f"user:{self._normalize_user_id(user_id)}", updates)
+            result = self._merge(f"user:{self._normalize_user_id(user_id)}", updates)
             if result:
                 return {
                     "success": True,
@@ -702,7 +716,7 @@ class UserService:
             new_hash = User.hash_password(new_password)
 
             # Update password
-            result = self.db.update(f"user:{self._normalize_user_id(user_id)}", {"password_hash": new_hash})
+            result = self._merge(f"user:{self._normalize_user_id(user_id)}", {"password_hash": new_hash})
             if result:
                 return True, "Password changed successfully"
             else:
@@ -718,7 +732,7 @@ class UserService:
         :return: (success, message)
         """
         try:
-            result = self.db.update(f"user:{self._normalize_user_id(user_id)}", {"is_active": False})
+            result = self._merge(f"user:{self._normalize_user_id(user_id)}", {"is_active": False})
             if result:
                 return True, "User deactivated successfully"
             else:
@@ -735,7 +749,7 @@ class UserService:
         :return: (success, message)
         """
         try:
-            result = self.db.update(f"user:{self._normalize_user_id(user_id)}", {"is_active": True})
+            result = self._merge(f"user:{self._normalize_user_id(user_id)}", {"is_active": True})
             if result:
                 return True, "User activated successfully"
             else:
