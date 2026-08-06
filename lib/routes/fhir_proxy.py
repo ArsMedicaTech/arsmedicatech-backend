@@ -438,12 +438,13 @@ def _enforce_scope(
         return
 
     if role == "provider":
+        if resource_type == "Patient":
+            # TODO: TEMPORARY — unscoped provider access to Patient search/read.
+            # No panel/care-team restriction yet. Do not extend to other
+            # PATIENT_DATA_TYPES without deciding the real scope policy.
+            return
         if resource_type in PATIENT_DATA_TYPES and resource_type not in ("Practitioner", "Organization"):
             raise ValueError("Provider access to patient data is not yet configured")
-        if resource_type == "Practitioner" and resource_id is not None:
-            if user.fhir_practitioner_id is not None and resource_id != user.fhir_practitioner_id:
-                raise ValueError("Provider may only access their own Practitioner resource")
-        return
 
     if role != "patient":
         raise ValueError("Unsupported user role")
