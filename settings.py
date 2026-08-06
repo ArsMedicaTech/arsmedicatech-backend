@@ -68,6 +68,13 @@ FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "super-secret-key")
 
 BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:3123/api")
 
+FHIR_BASE_URL = os.environ.get("FHIR_BASE_URL", "https://fhir.synapticl.com/fhir")
+
+FHIR_GATEWAY_URL = os.environ.get(
+    "FHIR_GATEWAY_URL",
+    "http://fhir-gateway.arsmedicatech-synapticl.svc.cluster.local:8080/fhir",
+)
+
 # MCP_URL = "http://localhost:9000/mcp"
 MCP_URL = os.environ.get("MCP_URL", "http://mcp-server/mcp/")
 
