@@ -610,6 +610,11 @@ def _enforce_scope(
             if resource_id is not None:
                 g.fhir_post_auth_patient_check = True
                 return
+            if method == "POST":
+                # Creating a new patient: there's no existing patient to scope
+                # against. Let the create through; authorization for *who* may
+                # create charts is enforced by the role check above, not panel scope.
+                return
             panel = _get_provider_panel(practitioner_id)
             if not panel:
                 # Signal fhir_proxy() to return an empty searchset without calling upstream.
