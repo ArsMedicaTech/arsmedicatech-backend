@@ -456,6 +456,11 @@ def _strip_practitioner_prefix(value: str) -> str:
     return value
 
 
+def _is_patient_reference(value: str) -> bool:
+    """True when an actor/participant value explicitly references a Patient."""
+    return value.startswith("Patient/") or "/Patient/" in value
+
+
 def _flush_care_team_cache() -> None:
     """Flush the in-process CareTeam membership cache."""
     _care_team_cache.clear()
@@ -551,35 +556,66 @@ def _get_provider_panel(practitioner_id: str) -> List[str]:
         raise ValueError("Failed to load provider panel")
 
 
-def _extract_appointment_patient(body: Dict[str, Any]) -> Optional[str]:
-    """Find the Patient participant's bare id on an Appointment body."""
+# Where a patient reference lives on each resource type. Paths are tried in
+# order; the first hit wins. A path segment of "[]" means "iterate the array
+# at this key". Types absent from this map fall back to the default paths.
+_DEFAULT_PATIENT_PATHS = [("subject",), ("patient",), ("beneficiary",)]
+
+PATIENT_REFERENCE_PATHS = {
+    "Appointment": [("participant", "[]", "actor")],
+    "AppointmentResponse": [("actor",)],
+}
+
+
+def _walk_reference_path(obj: Any, path: Tuple[str, ...]) -> Optional[str]:
+    """Resolve a single reference path, returning a bare patient id or None."""
+    if not path:
+        return None
+    seg = path[0]
+    if seg == "[]":
+        if not isinstance(obj, list):
+            return None
+        rest = path[1:]
+        for item in obj:
+            value = _walk_reference_path(item, rest)
+            if value:
+                return value
+        return None
+    if not isinstance(obj, dict):
+        return None
+    current = obj.get(seg)
+    if len(path) == 1:
+        ref = None
+        if isinstance(current, dict):
+            ref = current.get("reference")
+        elif isinstance(current, str):
+            ref = current
+        if not isinstance(ref, str):
+            return None
+        if "[]" in path:
+            if not (ref.startswith("Patient/") or "/Patient/" in ref):
+                return None
+        return _strip_patient_prefix(ref)
+    return _walk_reference_path(current, path[1:])
+
+
+def _extract_patient_from_paths(
+    body: Dict[str, Any], resource_type: Optional[str]
+) -> Optional[str]:
+    """Patient id from a resource body, using the type's known reference paths."""
     if not isinstance(body, dict):
         return None
-    for participant in body.get("participant", []):
-        if not isinstance(participant, dict):
-            continue
-        actor = participant.get("actor", {})
-        ref = actor.get("reference") if isinstance(actor, dict) else None
-        if isinstance(ref, str) and ref.startswith("Patient/"):
-            return _strip_patient_prefix(ref)
+    paths = PATIENT_REFERENCE_PATHS.get(resource_type, _DEFAULT_PATIENT_PATHS)
+    for path in paths:
+        value = _walk_reference_path(body, path)
+        if value:
+            return value
     return None
 
 
 def _extract_patient_reference(body: Dict[str, Any]) -> Optional[str]:
     """Bare patient id from a resource body, checking subject/patient/beneficiary."""
-    if not isinstance(body, dict):
-        return None
-    for field in ("subject", "patient", "beneficiary"):
-        value = body.get(field)
-        if not value:
-            continue
-        if isinstance(value, dict):
-            ref = value.get("reference")
-            if isinstance(ref, str):
-                return _strip_patient_prefix(ref)
-        elif isinstance(value, str):
-            return _strip_patient_prefix(value)
-    return None
+    return _extract_patient_from_paths(body, None)
 
 
 def _extract_resource_patient_id(
@@ -590,7 +626,20 @@ def _extract_resource_patient_id(
         return None
     if resource_type == "Patient":
         return body.get("id") or resource_id
-    return _extract_patient_reference(body)
+    return _extract_patient_from_paths(body, resource_type)
+
+
+def _get_appointment_patient(appt_id: str) -> Optional[str]:
+    """Fetch an Appointment and return its patient participant's bare id."""
+    try:
+        url = f"{FHIR_GATEWAY_URL.rstrip('/')}/Appointment/{appt_id}"
+        resp = requests.get(url, headers=_fhir_headers(), timeout=10)
+        if resp.status_code == 200:
+            return _extract_patient_from_paths(resp.json(), "Appointment")
+        logger.warning(f"Appointment lookup failed: status={resp.status_code}")
+    except Exception as exc:
+        logger.warning(f"Appointment lookup error: {exc}")
+    return None
 
 
 def _enforce_scope(
@@ -672,11 +721,26 @@ def _enforce_scope(
                     return
                 actor_values = params.get("actor", [])
                 if actor_values:
+                    # `actor` is polymorphic: it matches ANY participant, so a
+                    # value may reference a Practitioner (provider schedule) or
+                    # a Patient (chart appointment list).
                     for v in actor_values:
+                        if _is_patient_reference(v):
+                            patient_id = _strip_patient_prefix(v)
+                            if not _is_on_care_team(practitioner_id, patient_id):
+                                raise ValueError(
+                                    "Provider is not a participant on this patient's CareTeam"
+                                )
+                            continue
                         actor_id = _strip_practitioner_prefix(v)
-                        if actor_id != practitioner_id:
+                        if actor_id == practitioner_id:
+                            continue
+                        # Bare id: if it is not this provider's own
+                        # practitioner id, resolve it as a patient id.
+                        if not _is_on_care_team(practitioner_id, actor_id):
                             raise ValueError(
-                                "Provider may only search Appointment by actor for their own Practitioner id"
+                                "Provider may only search Appointment by actor for their own "
+                                "Practitioner id or a patient on their panel"
                             )
                     return
                 patient_values = params.get(PATIENT_SEARCH_PARAM["Appointment"], [])
@@ -693,7 +757,7 @@ def _enforce_scope(
             if method in ("POST", "PUT"):
                 if not body:
                     raise ValueError("Write request must include a FHIR resource body")
-                patient_id = _extract_appointment_patient(body)
+                patient_id = _extract_patient_from_paths(body, "Appointment")
                 if not patient_id:
                     raise ValueError(
                         "Appointment body must reference a patient participant"
@@ -731,6 +795,19 @@ def _enforce_scope(
             if resource_id is not None:
                 g.fhir_post_auth_patient_check = True
                 return
+            if resource_type == "Encounter":
+                appointment_values = params.get("appointment", [])
+                if appointment_values:
+                    for v in appointment_values:
+                        appt_id = v.split("/")[-1]
+                        appt_patient = _get_appointment_patient(appt_id)
+                        if not appt_patient or not _is_on_care_team(
+                            practitioner_id, appt_patient
+                        ):
+                            raise ValueError(
+                                "Provider is not a participant on this patient's CareTeam"
+                            )
+                    return
             if not search_param:
                 raise ValueError(f"Provider search is not supported for {resource_type}")
             patient_values = params.get(search_param, [])
@@ -746,7 +823,7 @@ def _enforce_scope(
         if method in ("POST", "PUT"):
             if not body:
                 raise ValueError("Write request must include a FHIR resource body")
-            patient_id = _extract_patient_reference(body)
+            patient_id = _extract_patient_from_paths(body, resource_type)
             if not patient_id:
                 raise ValueError(
                     f"Resource body must reference a patient for {resource_type}"
