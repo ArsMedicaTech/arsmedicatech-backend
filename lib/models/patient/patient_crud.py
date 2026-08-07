@@ -8,6 +8,7 @@ from amt_nano.db.surreal import AsyncDbController, DbController
 
 from lib.models.patient.common import PatientDict
 from lib.models.patient.patient_model import Patient
+from lib.services.fhir_client import ensure_patient
 from settings import logger
 
 
@@ -21,8 +22,6 @@ def store_patient(
     :param patient: Patient instance to store.
     :return: Result of the store operation.
     """
-    record_id = f"patient:{patient.demographic_no}"
-
     content_data: Dict[str, Any] = {
         "demographic_no": str(patient.demographic_no),
         "first_name": patient.first_name,
@@ -31,12 +30,17 @@ def store_patient(
         "sex": patient.sex,
         "phone": patient.phone,
         "email": patient.email,
+        "fhir_patient_id": patient.fhir_patient_id,
         # location could be stored as a separate field or nested object up to you.
         "location": list(patient.location) if patient.location is not None else [],
     }
 
-    query = f"CREATE {record_id} CONTENT $data"
-    params = {"data": content_data}
+    query = "UPSERT type::thing($tb, $rid) MERGE $data"
+    params = {
+        "tb": "patient",
+        "rid": str(patient.demographic_no),
+        "data": content_data,
+    }
 
     # If the patient record might already exist, consider UPDATE or UPSERT logic instead.
     # For simplicity, we’ll just CREATE each time:
@@ -295,6 +299,22 @@ def create_patient(patient_data: Dict[str, Any]) -> PatientDict:
             patient_data["demographic_no"] = str(new_id)
             logger.debug(f"Generated demographic_no: {new_id}")
 
+        # Create the FHIR Patient first, then store the SurrealDB record with its id.
+        # This fails toward a state where the FHIR record exists but the local row does not,
+        # which is recoverable; the reverse is an invisible orphan.
+        fhir_patient_id = ensure_patient(
+            demographic_no=patient_data["demographic_no"],
+            first_name=patient_data.get("first_name"),
+            last_name=patient_data.get("last_name"),
+            date_of_birth=patient_data.get("date_of_birth"),
+            sex=patient_data.get("sex"),
+            phone=patient_data.get("phone"),
+            email=patient_data.get("email"),
+        )
+        if not fhir_patient_id:
+            logger.error("Failed to create FHIR Patient for demographic_no %s", patient_data["demographic_no"])
+            return cast(PatientDict, {})
+
         # Create Patient object
         loc = patient_data.get("location", [])
 
@@ -307,6 +327,7 @@ def create_patient(patient_data: Dict[str, Any]) -> PatientDict:
             sex=patient_data.get("sex"),
             phone=patient_data.get("phone"),
             email=patient_data.get("email"),
+            fhir_patient_id=fhir_patient_id,
         )
 
         logger.debug(f"Created Patient object: {patient}")

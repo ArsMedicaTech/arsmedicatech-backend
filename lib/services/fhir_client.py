@@ -24,6 +24,19 @@ from settings import (
 # Simple in-memory cache for the backend service token.
 _keycloak_token_cache: Dict[str, Any] = {}
 
+AMT_PATIENT_SOURCE = "urn:arsmedicatech:amt:provider-created"
+AMT_DEMOGRAPHIC_SYSTEM = "https://arsmedicatech.com/fhir/sid/amt-demographic-no"
+_GENDER_MAP = {
+    "F": "female",
+    "M": "male",
+    "O": "other",
+    "U": "unknown",
+    "female": "female",
+    "male": "male",
+    "other": "other",
+    "unknown": "unknown",
+}
+
 
 def _get_keycloak_token() -> Optional[str]:
     """
@@ -200,3 +213,170 @@ def ensure_practitioner(
             f"Exception ensuring Practitioner/{practitioner_id} in HAPI FHIR: {e}"
         )
         return None
+
+
+PROVIDER_CREATED_SOURCE = "urn:arsmedicatech:amt:provider-created"
+
+
+def _sex_to_gender(sex: Optional[str]) -> Optional[str]:
+    """Map the SurrealDB sex code to a FHIR gender value."""
+    if not sex:
+        return None
+    return _GENDER_MAP.get(sex.strip().upper()) or _GENDER_MAP.get(
+        sex.strip().lower()
+    )
+
+
+def _extract_id_from_location(
+    location: Optional[str], resource_type: str = "Patient"
+) -> Optional[str]:
+    """Pull the resource id from a HAPI Location/Content-Location header."""
+    if not location:
+        return None
+    # Accept paths like Patient/123, /fhir/Patient/123/_history/1, or full URLs.
+    parts = [p for p in location.split("/") if p]
+    for i, part in enumerate(parts):
+        if part == resource_type and i + 1 < len(parts):
+            return parts[i + 1]
+    return None
+
+
+def _build_patient_resource(
+    demographic_no: str,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    date_of_birth: Optional[str] = None,
+    sex: Optional[str] = None,
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build a FHIR Patient resource for a provider-created chart."""
+    resource: Dict[str, Any] = {
+        "resourceType": "Patient",
+        "meta": {"source": AMT_PATIENT_SOURCE},
+        "identifier": [
+            {
+                "system": AMT_DEMOGRAPHIC_SYSTEM,
+                "value": str(demographic_no),
+            }
+        ],
+        "active": True,
+        "name": [],
+    }
+
+    name: Dict[str, Any] = {}
+    if last_name:
+        name["family"] = last_name
+    if first_name:
+        name["given"] = [first_name]
+    if name:
+        resource["name"].append(name)
+
+    telecom: List[Dict[str, str]] = []
+    if phone:
+        telecom.append({"system": "phone", "value": phone})
+    if email:
+        telecom.append({"system": "email", "value": email})
+    if telecom:
+        resource["telecom"] = telecom
+
+    gender = _sex_to_gender(sex)
+    if gender:
+        resource["gender"] = gender
+
+    if date_of_birth:
+        resource["birthDate"] = str(date_of_birth)
+
+    return resource
+
+
+def _post_resource_with_condition(
+    resource: Dict[str, Any], condition: str
+) -> Optional[requests.Response]:
+    """POST a Patient with an If-None-Exist conditional create header."""
+    url = f"{FHIR_BASE_URL}/Patient"
+    headers = _fhir_headers()
+    headers["If-None-Exist"] = condition
+    logger.debug(f"POST {url} If-None-Exist={condition}")
+    try:
+        response = requests.post(url, json=resource, headers=headers, timeout=10)
+        logger.debug(
+            f"POST {url} status={response.status_code} body={response.text[:500]}"
+        )
+        if response.status_code in (200, 201):
+            return response
+    except Exception as e:
+        logger.error(f"Exception POSTing conditional Patient to {url}: {e}")
+    return None
+
+
+def _patient_id_from_response(response: requests.Response) -> Optional[str]:
+    """Best-effort extraction of the Patient id from a conditional create response."""
+    location = response.headers.get("Location") or response.headers.get(
+        "Content-Location"
+    )
+    resource_id = _extract_id_from_location(location, "Patient")
+    if resource_id:
+        return resource_id
+
+    try:
+        body = response.json()
+    except Exception:
+        return None
+
+    if isinstance(body, dict):
+        if body.get("resourceType") == "Patient" and "id" in body:
+            return str(body["id"])
+        if body.get("resourceType") == "Bundle" and body.get("entry"):
+            first = body["entry"][0].get("resource", {})
+            if first.get("resourceType") == "Patient" and "id" in first:
+                return str(first["id"])
+    return None
+
+
+def ensure_patient(
+    demographic_no: str,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    date_of_birth: Optional[str] = None,
+    sex: Optional[str] = None,
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Ensure a provider-created Patient resource exists in the HAPI FHIR server.
+
+    Uses conditional create on the AMT-local demographic identifier, so a retry
+    with the same demographic_no returns the same FHIR Patient id without
+    creating a duplicate.
+
+    :return: The FHIR Patient id, or None on failure.
+    """
+    resource = _build_patient_resource(
+        demographic_no,
+        first_name=first_name,
+        last_name=last_name,
+        date_of_birth=date_of_birth,
+        sex=sex,
+        phone=phone,
+        email=email,
+    )
+    condition = f"identifier={AMT_DEMOGRAPHIC_SYSTEM}|{demographic_no}"
+
+    response = _post_resource_with_condition(resource, condition)
+    if not response:
+        logger.error(
+            f"Failed to ensure Patient for demographic_no={demographic_no}"
+        )
+        return None
+
+    patient_id = _patient_id_from_response(response)
+    if not patient_id:
+        logger.error(
+            f"Could not determine Patient id from HAPI response for demographic_no={demographic_no}: "
+            f"status={response.status_code}"
+        )
+        return None
+
+    logger.info(f"Ensured Patient/{patient_id} for demographic_no={demographic_no}")
+    return patient_id

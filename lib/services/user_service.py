@@ -268,15 +268,9 @@ class UserService:
                         if not user.fhir_practitioner_id and user.external_id:
                             user.fhir_practitioner_id = f"pr-{user.external_id}"
                     elif user.role == "patient":
+                        # fhir_patient_id is populated from the chart's real FHIR Patient below,
+                        # not fabricated. A null value is the honest "not yet linked" state.
                         user.fhir_practitioner_id = None
-                        if not user.fhir_patient_id:
-                            user_id_str = str(user.id) if user.id is not None else ""
-                            user_id_suffix = (
-                                user_id_str.split(":", 1)[1]
-                                if ":" in user_id_str
-                                else user_id_str
-                            )
-                            user.fhir_patient_id = f"dev-patient-{user_id_suffix}"
                     else:
                         user.fhir_practitioner_id = None
                         user.fhir_patient_id = None
@@ -284,10 +278,6 @@ class UserService:
                     if user.role == "provider" and not user.fhir_practitioner_id:
                         logger.warning(
                             f"Provider user missing fhir_practitioner_id after creation: {user.id}"
-                        )
-                    if user.role == "patient" and not user.fhir_patient_id:
-                        logger.warning(
-                            f"Patient user missing fhir_patient_id after creation: {user.id}"
                         )
 
                     # Persist linkage into SurrealDB
@@ -359,7 +349,13 @@ class UserService:
                             if key != "location" and patient_data[key] is None:
                                 patient_data[key] = ""
                         patient_result = create_patient(patient_data)
-                        if not patient_result:
+                        if patient_result and patient_result.get("fhir_patient_id"):
+                            user.fhir_patient_id = patient_result["fhir_patient_id"]
+                            self._merge(
+                                str(user.id),
+                                {"fhir_patient_id": user.fhir_patient_id},
+                            )
+                        else:
                             logger.error(
                                 f"Failed to create patient record for user: {user.id}"
                             )

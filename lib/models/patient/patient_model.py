@@ -26,6 +26,7 @@ class Patient:
         sex: Optional[str] = None,
         phone: Optional[str] = None,
         email: Optional[str] = None,
+        fhir_patient_id: Optional[str] = None,
     ) -> None:
         """
         Initializes a Patient instance.
@@ -51,6 +52,7 @@ class Patient:
         self.sex = sex
         self.phone = phone
         self.email = email
+        self.fhir_patient_id = fhir_patient_id
 
         self.alerts: List[Any] = []
         self.ext_attributes: Dict[str, Any] = {}  # For demographicExt key-value pairs
@@ -76,6 +78,7 @@ class Patient:
             "sex": self.sex,
             "phone": self.phone,
             "email": self.email,
+            "fhir_patient_id": self.fhir_patient_id,
             # location could be stored as a separate field or nested object up to you.
         }
 
@@ -130,6 +133,7 @@ class Patient:
             DEFINE FIELD sex ON patient TYPE string;
             DEFINE FIELD phone ON patient TYPE string;
             DEFINE FIELD email ON patient TYPE string ASSERT string::is::email($value);
+            DEFINE FIELD fhir_patient_id ON patient TYPE string;
             DEFINE FIELD created_at ON patient TYPE datetime VALUE time::now() READONLY;
             DEFINE FIELD updated_at ON patient TYPE datetime VALUE time::now();
             DEFINE INDEX idx_patient_demographic_no ON patient FIELDS demographic_no UNIQUE;
