@@ -405,7 +405,6 @@ def require_flexible_auth(f: Callable[..., Any]) -> Callable[..., Any]:
 
         user_session: Optional[UserSession] = None
         token = request.headers.get("Authorization")
-        print(f"Auth header token: {token}")
         # Safely handle missing or malformed Authorization header before accessing token part
         if token and token.startswith("Bearer "):
             dev_token = token[len("Bearer ") :]
