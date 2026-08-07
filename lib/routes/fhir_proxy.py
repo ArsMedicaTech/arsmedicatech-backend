@@ -551,6 +551,20 @@ def _get_provider_panel(practitioner_id: str) -> List[str]:
         raise ValueError("Failed to load provider panel")
 
 
+def _extract_appointment_patient(body: Dict[str, Any]) -> Optional[str]:
+    """Find the Patient participant's bare id on an Appointment body."""
+    if not isinstance(body, dict):
+        return None
+    for participant in body.get("participant", []):
+        if not isinstance(participant, dict):
+            continue
+        actor = participant.get("actor", {})
+        ref = actor.get("reference") if isinstance(actor, dict) else None
+        if isinstance(ref, str) and ref.startswith("Patient/"):
+            return _strip_patient_prefix(ref)
+    return None
+
+
 def _extract_patient_reference(body: Dict[str, Any]) -> Optional[str]:
     """Bare patient id from a resource body, checking subject/patient/beneficiary."""
     if not isinstance(body, dict):
@@ -676,7 +690,20 @@ def _enforce_scope(
                             "Provider is not a participant on this patient's CareTeam"
                         )
                 return
-            # POST/PUT intentionally falls through to the generic write path below.
+            if method in ("POST", "PUT"):
+                if not body:
+                    raise ValueError("Write request must include a FHIR resource body")
+                patient_id = _extract_appointment_patient(body)
+                if not patient_id:
+                    raise ValueError(
+                        "Appointment body must reference a patient participant"
+                    )
+                if not _is_on_care_team(practitioner_id, patient_id):
+                    raise ValueError(
+                        "Provider is not a participant on this patient's CareTeam"
+                    )
+                return
+            raise ValueError(f"Method {method} not allowed for provider on Appointment")
 
         if resource_type not in PATIENT_DATA_TYPES:
             return
