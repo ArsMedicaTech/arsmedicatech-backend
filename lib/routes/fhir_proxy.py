@@ -445,6 +445,17 @@ def _strip_patient_prefix(value: str) -> str:
     return value
 
 
+def _strip_practitioner_prefix(value: str) -> str:
+    """'Practitioner/abc' -> 'abc'; bare 'abc' -> 'abc' unchanged."""
+    if not isinstance(value, str):
+        return value
+    marker = "Practitioner/"
+    idx = value.rfind(marker)
+    if idx != -1:
+        return value[idx + len(marker):]
+    return value
+
+
 def _flush_care_team_cache() -> None:
     """Flush the in-process CareTeam membership cache."""
     _care_team_cache.clear()
@@ -636,6 +647,36 @@ def _enforce_scope(
                 g.fhir_post_auth_patient_check = True
                 return
             raise ValueError(f"Method {method} not allowed for provider on CareTeam")
+
+        # Appointment: a provider may search their own schedule by actor, or fall
+        # back to the standard patient-scoped search for appointments on patients
+        # they are caring for.
+        if resource_type == "Appointment":
+            if method == "GET":
+                if resource_id is not None:
+                    g.fhir_post_auth_patient_check = True
+                    return
+                actor_values = params.get("actor", [])
+                if actor_values:
+                    for v in actor_values:
+                        actor_id = _strip_practitioner_prefix(v)
+                        if actor_id != practitioner_id:
+                            raise ValueError(
+                                "Provider may only search Appointment by actor for their own Practitioner id"
+                            )
+                    return
+                patient_values = params.get(PATIENT_SEARCH_PARAM["Appointment"], [])
+                if not patient_values:
+                    raise ValueError(
+                        "Provider Appointment search must be scoped to either actor (self) or a specific patient"
+                    )
+                for v in patient_values:
+                    if not _is_on_care_team(practitioner_id, _strip_patient_prefix(v)):
+                        raise ValueError(
+                            "Provider is not a participant on this patient's CareTeam"
+                        )
+                return
+            # POST/PUT intentionally falls through to the generic write path below.
 
         if resource_type not in PATIENT_DATA_TYPES:
             return
