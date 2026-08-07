@@ -41,6 +41,7 @@ from lib.models.user.user import User
 from lib.routes.fhir_proxy import (
     CARE_TEAM_CACHE_TTL,
     MAX_PANEL_SIZE,
+    PATIENT_SEARCH_PARAM,
     _care_team_cache,
     _enforce_scope,
     _extract_patient_reference,
@@ -269,31 +270,33 @@ class TestEnforceScopeProvider:
 
     @pytest.mark.parametrize(
         "resource_type",
-        ["Encounter", "Condition", "AllergyIntolerance", "MedicationStatement", "FamilyMemberHistory"],
+        ["CarePlan", "Encounter", "Condition", "DiagnosticReport", "DocumentReference", "Goal", "ImagingStudy", "MedicationStatement", "Observation", "QuestionnaireResponse", "ServiceRequest", "AllergyIntolerance", "FamilyMemberHistory"],
     )
     def test_member_allowed_for_patient_scoped_search(self, resource_type, provider_user, monkeypatch):
         monkeypatch.setattr(
             "lib.routes.fhir_proxy._is_on_care_team", lambda _prid, _pid: True
         )
-        params = {"patient": ["1007"]}
+        search_param = PATIENT_SEARCH_PARAM[resource_type]
+        params = {search_param: ["Patient/1007"]}
         _enforce_scope(resource_type, None, "GET", params, None, provider_user)
-        assert params["patient"] == ["1007"]
+        assert params[search_param] == ["Patient/1007"]
 
     @pytest.mark.parametrize(
         "resource_type",
-        ["Encounter", "Condition", "AllergyIntolerance", "MedicationStatement", "FamilyMemberHistory"],
+        ["CarePlan", "Encounter", "Condition", "DiagnosticReport", "DocumentReference", "Goal", "ImagingStudy", "MedicationStatement", "Observation", "QuestionnaireResponse", "ServiceRequest", "AllergyIntolerance", "FamilyMemberHistory"],
     )
     def test_non_member_denied_for_patient_scoped_search(self, resource_type, provider_user, monkeypatch):
         monkeypatch.setattr(
             "lib.routes.fhir_proxy._is_on_care_team", lambda _prid, _pid: False
         )
-        params = {"patient": ["1007"]}
+        search_param = PATIENT_SEARCH_PARAM[resource_type]
+        params = {search_param: ["Patient/1007"]}
         with pytest.raises(ValueError, match="not a participant"):
             _enforce_scope(resource_type, None, "GET", params, None, provider_user)
 
     @pytest.mark.parametrize(
         "resource_type",
-        ["Encounter", "Condition", "AllergyIntolerance", "MedicationStatement", "FamilyMemberHistory"],
+        ["CarePlan", "Encounter", "Condition", "DiagnosticReport", "DocumentReference", "Goal", "ImagingStudy", "MedicationStatement", "Observation", "QuestionnaireResponse", "ServiceRequest", "AllergyIntolerance", "FamilyMemberHistory"],
     )
     def test_patient_scoped_search_without_param_denied(self, resource_type, provider_user):
         params = {}
@@ -560,7 +563,7 @@ class TestBundleAuthorization:
             "lib.routes.fhir_proxy._is_on_care_team", lambda _prid, _pid: False
         )
         entry = {
-            "request": {"method": "GET", "url": "Encounter?patient=9999"},
+            "request": {"method": "GET", "url": "Encounter?subject=Patient/9999"},
         }
         with pytest.raises(ValueError, match="not a participant"):
             _validate_bundle_entry(entry, provider_user)
@@ -570,7 +573,7 @@ class TestBundleAuthorization:
             "lib.routes.fhir_proxy._is_on_care_team", lambda _prid, _pid: True
         )
         entry = {
-            "request": {"method": "GET", "url": "Encounter?patient=1007"},
+            "request": {"method": "GET", "url": "Encounter?subject=Patient/1007"},
         }
         _validate_bundle_entry(entry, provider_user)
 
