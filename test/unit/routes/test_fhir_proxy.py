@@ -47,6 +47,7 @@ from lib.routes.fhir_proxy import (
     _extract_resource_patient_id,
     _flush_care_team_cache,
     _forward_request,
+    _get_active_care_team_count,
     _get_provider_panel,
     _is_on_care_team,
     _validate_bundle_entry,
@@ -387,6 +388,55 @@ class TestEnforceScopeCareTeam:
         params = {"patient": ["1007"]}
         with pytest.raises(ValueError, match="not a participant"):
             _enforce_scope("CareTeam", None, "GET", params, None, provider_user)
+
+    def test_care_team_bootstrap_allows_first_create(self, provider_user, monkeypatch):
+        monkeypatch.setattr(
+            "lib.routes.fhir_proxy._get_active_care_team_count", lambda _pid: 0
+        )
+        monkeypatch.setattr(
+            "lib.routes.fhir_proxy._is_on_care_team", lambda _prid, _pid: False
+        )
+        body = {
+            "resourceType": "CareTeam",
+            "subject": {"reference": "Patient/1007"},
+            "participant": [{"member": {"reference": "Practitioner/pr-jones"}}],
+        }
+        params = {}
+        _enforce_scope("CareTeam", None, "POST", params, body, provider_user)
+
+    def test_care_team_post_blocked_when_care_team_exists_and_not_member(
+        self, provider_user, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "lib.routes.fhir_proxy._get_active_care_team_count", lambda _pid: 1
+        )
+        monkeypatch.setattr(
+            "lib.routes.fhir_proxy._is_on_care_team", lambda _prid, _pid: False
+        )
+        body = {
+            "resourceType": "CareTeam",
+            "subject": {"reference": "Patient/1007"},
+            "participant": [{"member": {"reference": "Practitioner/pr-jones"}}],
+        }
+        params = {}
+        with pytest.raises(ValueError, match="not a participant"):
+            _enforce_scope("CareTeam", None, "POST", params, body, provider_user)
+
+    def test_care_team_count_query_failure_fails_closed(
+        self, provider_user, monkeypatch, mock_requests_get
+    ):
+        mock_requests_get.side_effect = RuntimeError("boom")
+        monkeypatch.setattr(
+            "lib.routes.fhir_proxy._is_on_care_team", lambda _prid, _pid: False
+        )
+        body = {
+            "resourceType": "CareTeam",
+            "subject": {"reference": "Patient/1007"},
+            "participant": [{"member": {"reference": "Practitioner/pr-jones"}}],
+        }
+        params = {}
+        with pytest.raises(ValueError, match="not a participant"):
+            _enforce_scope("CareTeam", None, "POST", params, body, provider_user)
 
 
 @pytest.mark.usefixtures("app_context")

@@ -482,6 +482,22 @@ def _is_on_care_team(practitioner_id: str, patient_id: str) -> bool:
     return result
 
 
+def _get_active_care_team_count(patient_id: str) -> int:
+    """Count of active CareTeam resources for a patient, for bootstrap checks."""
+    try:
+        url = f"{FHIR_GATEWAY_URL.rstrip('/')}/CareTeam"
+        params = {"patient": patient_id, "status": "active", "_summary": "count"}
+        resp = requests.get(url, params=params, headers=_fhir_headers(), timeout=10)
+        if resp.status_code == 200:
+            return resp.json().get("total", 0)
+        logger.warning(f"CareTeam count query failed: status={resp.status_code}")
+    except Exception as exc:
+        logger.warning(f"CareTeam count query error: {exc}")
+    # Fail closed: on any error, report a nonzero count so the bootstrap
+    # exception does NOT fire and the stricter membership check applies.
+    return 1
+
+
 def _get_provider_panel(practitioner_id: str) -> List[str]:
     """Patient ids where this practitioner is an active CareTeam participant.
 
@@ -574,7 +590,25 @@ def _enforce_scope(
 
         # CareTeam itself must be handled before the generic patient-data branch.
         if resource_type == "CareTeam":
-            if method in ("POST", "PUT"):
+            if method == "POST":
+                if not body:
+                    raise ValueError("Write request must include a FHIR resource body")
+                patient_id = _extract_patient_reference(body)
+                if not patient_id:
+                    raise ValueError("CareTeam body must reference a patient")
+                if _get_active_care_team_count(patient_id) == 0:
+                    # Bootstrap: no active CareTeam exists yet for this patient, so
+                    # there is no membership to check against. Any authenticated
+                    # provider may create the first one. This does not let a
+                    # provider add themselves to an *existing* CareTeam they aren't
+                    # on — that path still requires _is_on_care_team below.
+                    return
+                if not _is_on_care_team(practitioner_id, patient_id):
+                    raise ValueError(
+                        "Provider is not a participant on this patient's CareTeam"
+                    )
+                return
+            if method == "PUT":
                 if not body:
                     raise ValueError("Write request must include a FHIR resource body")
                 patient_id = _extract_patient_reference(body)
