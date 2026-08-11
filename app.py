@@ -109,6 +109,7 @@ from lib.routes.testing import (
     test_crud_route,
     test_surrealdb_route,
 )
+from lib.routes.icd_autocoder import icd_autocoder_bp
 from lib.routes.uploads import uploads_bp
 from lib.routes.fhir_proxy import fhir_proxy_bp
 from lib.routes.user_notes import (
@@ -1978,6 +1979,7 @@ def serve_plugin_js(plugin_name: str) -> Tuple[Response, int]:
 app.register_blueprint(sse_bp)
 app.register_blueprint(uploads_bp)
 app.register_blueprint(fhir_proxy_bp)
+app.register_blueprint(icd_autocoder_bp)
 
 from asgiref.wsgi import WsgiToAsgi
 
