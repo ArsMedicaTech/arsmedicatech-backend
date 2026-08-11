@@ -641,6 +641,17 @@ def _get_appointment_patient(appt_id: str) -> Optional[str]:
         logger.warning(f"Appointment lookup error: {exc}")
     return None
 
+def _get_encounter_patient(encounter_id: str) -> Optional[str]:
+    """Fetch an Encounter and return its subject patient's bare id."""
+    try:
+        url = f"{FHIR_GATEWAY_URL.rstrip('/')}/Encounter/{encounter_id}"
+        resp = requests.get(url, headers=_fhir_headers(), timeout=10)
+        if resp.status_code == 200:
+            return _extract_patient_from_paths(resp.json(), "Encounter")
+        logger.warning(f"Encounter lookup failed: status={resp.status_code}")
+    except Exception as exc:
+        logger.warning(f"Encounter lookup error: {exc}")
+    return None
 
 def _enforce_scope(
     resource_type: str,
@@ -710,6 +721,20 @@ def _enforce_scope(
                 g.fhir_post_auth_patient_check = True
                 return
             raise ValueError(f"Method {method} not allowed for provider on CareTeam")
+        
+        if resource_type == "DocumentReference":
+            encounter_values = params.get("encounter", [])
+            if encounter_values:
+                for v in encounter_values:
+                    enc_id = v.split("/")[-1]
+                    enc_patient = _get_encounter_patient(enc_id)
+                    if not enc_patient or not _is_on_care_team(
+                        practitioner_id, enc_patient
+                    ):
+                        raise ValueError(
+                            "Provider is not a participant on this patient's CareTeam"
+                        )
+                return
 
         # Appointment: a provider may search their own schedule by actor, or fall
         # back to the standard patient-scoped search for appointments on patients
