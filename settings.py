@@ -78,6 +78,19 @@ FHIR_GATEWAY_URL = os.environ.get(
 # MCP_URL = "http://localhost:9000/mcp"
 MCP_URL = os.environ.get("MCP_URL", "http://mcp-server/mcp/")
 
+# Hosts allowed to receive the encrypted x-session-token header. Client-supplied
+# MCP servers (via mcp_config in the chat request) are only trusted with the
+# user's session token if their host appears in this allowlist, to prevent a
+# malicious client-configured MCP endpoint from harvesting the token.
+MCP_TRUSTED_HOSTS = tuple(
+    h.strip()
+    for h in os.environ.get(
+        "MCP_TRUSTED_HOSTS",
+        "localhost,127.0.0.1,mcp-server,coaching.synapticl.com,mcp.arsmedicatech.com",
+    ).split(",")
+    if h.strip()
+)
+
 TEST_OPTIMAL_KEY = os.environ.get(
     "OPTIMAL_KEY", "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 )
@@ -248,6 +261,7 @@ class Config:
     FHIR_BASE_URL = FHIR_BASE_URL
     FHIR_GATEWAY_URL = FHIR_GATEWAY_URL
     MCP_URL = MCP_URL
+    MCP_TRUSTED_HOSTS = MCP_TRUSTED_HOSTS
     OPTIMAL_URL = OPTIMAL_URL
     REDIS_HOST = REDIS_HOST
     REDIS_PORT = REDIS_PORT
