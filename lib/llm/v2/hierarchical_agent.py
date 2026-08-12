@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 from types import TracebackType
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Sequence
+from urllib.parse import urlparse
 
 from fastmcp import Client
 
@@ -17,8 +19,15 @@ class HierarchicalAgentManager:
     presenting a unified, hierarchical interface of their capabilities.
     """
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        session_token: Optional[str] = None,
+        trusted_hosts: Optional[Sequence[str]] = None,
+    ):
+        self.config = self._inject_session_headers(
+            config, session_token, trusted_hosts
+        )
         self.client = Client(self.config)
         self.openai_defs: List[Dict[str, Any]] = []
         self.func_lookup: Dict[str, Callable[..., Any]] = {}
@@ -121,6 +130,10 @@ class HierarchicalAgentManager:
         """Creates a wrapper to call a specific tool using the persistent client."""
 
         async def _call(**kwargs: Any) -> Any:
+            # session_id is a v1-only convention consumed by process_tool_call;
+            # it must never be forwarded as a tool argument here (the token is
+            # already attached as an x-session-token header via self.client).
+            kwargs.pop("session_id", None)
             logger.info(f"Calling hierarchical tool: {tool_name} with args: {kwargs}")
             try:
                 # Use the single, persistent self.client

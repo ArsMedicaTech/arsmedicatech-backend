@@ -193,9 +193,12 @@ async def process_tool_call(
         )  # [DEBUG] Function: rag -> _call
 
     tool_function = tool_dict[function_name]
-    # Check if this is an MCP tool by checking if it's a wrapped function from fetch_mcp_tool_defs
-    # MCP tools are wrapped and always require session_id parameter
-    if function_name in tools_with_keys:
+    # v1 wrappers (fetch_mcp_tool_defs) declare `session_id` as a keyword-only
+    # parameter and turn it into an x-session-token header. v2 wrappers
+    # (HierarchicalAgentManager) take **kwargs only and receive the token via
+    # per-request client headers instead, so forwarding session_id there would
+    # leak it into the tool arguments and fail server-side validation.
+    if "session_id" in inspect.signature(tool_function).parameters:
         tool_result = await tool_function(session_id=session_id, **arguments)
     else:
         tool_result = await tool_function(**arguments)
@@ -417,8 +420,15 @@ class LLMAgent:
         # Merge client config with server config if provided
         merged_config = merge_mcp_configs(mcp_config, client_mcp_config)
 
-        # 1) Instantiate and connect the HierarchicalAgentManager
-        agent_manager = HierarchicalAgentManager(merged_config)
+        # 1) Instantiate and connect the HierarchicalAgentManager, forwarding
+        # the user's encrypted OpenAI key as an x-session-token header so
+        # tools like `rag` that need it can read it server-side.
+        session_token = get_encryption_service().encrypt_api_key(api_key)
+        agent_manager = HierarchicalAgentManager(
+            merged_config,
+            session_token=session_token,
+            trusted_hosts=MCP_TRUSTED_HOSTS,
+        )
 
         # 2) Instantiate the LLMAgent as before
         model_str = model.value if model else LLMModel.GPT_5_NANO.value

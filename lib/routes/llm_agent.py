@@ -5,6 +5,7 @@ LLM Agent Endpoint
 import asyncio
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+from amt_nano.services.encryption import get_encryption_service
 from flask import Response, jsonify, request
 
 from lib.data_types import UserID
@@ -20,7 +21,7 @@ from lib.services.auth_decorators import get_current_user
 from lib.services.llm_chat_service import LLMChatService
 from lib.services.llm_trace_service import build_trace_context
 from lib.services.openai_security import get_openai_security_service
-from settings import AGENT_VERSION, MCP_URL, logger, mcp_config
+from settings import AGENT_VERSION, MCP_TRUSTED_HOSTS, MCP_URL, logger, mcp_config
 
 
 async def _get_agent_response(
@@ -46,7 +47,15 @@ async def _get_agent_response(
     """
     # Merge client config with server config if provided
     merged_config = merge_mcp_configs(mcp_conf, client_mcp_config)
-    manager = HierarchicalAgentManager(merged_config)
+
+    # Forward the user's encrypted OpenAI key as an x-session-token header so
+    # tools (e.g. `rag`) that need per-user credentials can read it server-side.
+    session_token = get_encryption_service().encrypt_api_key(api_key)
+    manager = HierarchicalAgentManager(
+        merged_config,
+        session_token=session_token,
+        trusted_hosts=MCP_TRUSTED_HOSTS,
+    )
 
     async with manager:
         system_prompt_val = kwargs.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
