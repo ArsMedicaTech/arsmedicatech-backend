@@ -212,6 +212,21 @@ MINIO_ENCOUNTER_RECORDINGS_BUCKET = os.environ.get(
     "MINIO_ENCOUNTER_RECORDINGS_BUCKET", "encounter-recordings"
 )
 
+# Typesense ICD-10-CM search (mirrors arsmedicatech-nanoservices/settings.py —
+# amt_nano.services.icd_search_service imports these names directly)
+TYPESENSE_URL = os.environ.get("TYPESENSE_URL", "")
+TYPESENSE_API_KEY = os.environ.get("TYPESENSE_API_KEY", "")
+TYPESENSE_ICD_COLLECTION = os.environ.get("TYPESENSE_ICD_COLLECTION", "icd_codes")
+
+# amt_nano.services.icd_autocoder_service imports these directly
+NER_SERVICE_URL = os.environ.get(
+    "NER_SERVICE_URL",
+    "http://ner.arsmedicatech-oss.svc.cluster.local/ner/extract",
+)
+NER_TIMEOUT_SECONDS = float(os.environ.get("NER_TIMEOUT_SECONDS", "10"))
+ICD_RANKING_ENABLED = os.environ.get("ICD_RANKING_ENABLED", "false").lower() == "true"
+ICD_RANKING_MODEL = os.environ.get("ICD_RANKING_MODEL", "")
+
 
 class Config:
     SURREALDB_NAMESPACE = SURREALDB_NAMESPACE
@@ -279,6 +294,13 @@ class Config:
     MINIO_ACCESS_KEY = MINIO_ACCESS_KEY
     MINIO_SECRET_KEY = MINIO_SECRET_KEY
     MINIO_ENCOUNTER_RECORDINGS_BUCKET = MINIO_ENCOUNTER_RECORDINGS_BUCKET
+    TYPESENSE_API_KEY = TYPESENSE_API_KEY
+    TYPESENSE_URL = TYPESENSE_URL
+    TYPESENSE_ICD_COLLECTION = TYPESENSE_ICD_COLLECTION
+    NER_SERVICE_URL = NER_SERVICE_URL
+    NER_TIMEOUT_SECONDS = NER_TIMEOUT_SECONDS
+    ICD_RANKING_ENABLED = ICD_RANKING_ENABLED
+    ICD_RANKING_MODEL = ICD_RANKING_MODEL
 
     @classmethod
     def as_dict(cls) -> dict:
