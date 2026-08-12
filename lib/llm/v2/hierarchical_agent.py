@@ -25,6 +25,42 @@ class HierarchicalAgentManager:
         self.resources: List[Any] = []  # You can store resource info here
         self.prompts: List[Any] = []  # You can store prompt info here
 
+    @staticmethod
+    def _inject_session_headers(
+        config: Dict[str, Any],
+        session_token: Optional[str],
+        trusted_hosts: Optional[Sequence[str]],
+    ) -> Dict[str, Any]:
+        """
+        Attach an x-session-token header (the encrypted OpenAI API key) to
+        remote MCP servers so tools that need per-user credentials (e.g. `rag`)
+        can read them the same way v1's `fetch_mcp_tool_defs` wrapper did.
+
+        :param config: Base MCP configuration (mcpServers dict).
+        :param session_token: Encrypted OpenAI API key to forward as a header.
+        :param trusted_hosts: If provided, only servers whose host is in this
+            list receive the header, to avoid leaking the token to arbitrary
+            client-supplied MCP servers.
+        :return: A new config dict with headers injected; the input is not mutated.
+        """
+        if not session_token:
+            return config
+
+        cfg = json.loads(json.dumps(config))  # deep copy; don't mutate caller's config
+        for name, server in cfg.get("mcpServers", {}).items():
+            url = server.get("url")
+            if not url:
+                continue  # stdio server, no headers to attach
+            if trusted_hosts is not None:
+                host = urlparse(url).hostname or ""
+                if host not in trusted_hosts:
+                    logger.info(
+                        f"Skipping session header for untrusted MCP server: {name}"
+                    )
+                    continue
+            server.setdefault("headers", {})["x-session-token"] = session_token
+        return cfg
+
     async def __aenter__(self):
         """
         Connects to all configured MCP servers and builds the tool/resource lists.
