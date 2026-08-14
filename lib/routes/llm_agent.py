@@ -330,6 +330,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             response_data["messages"] = messages
             response_data["thread_id"] = thread_id
             response_data["used_tools"] = used_tools
+            response_data["trace_id"] = trace_context["trace_id"]
 
             return jsonify(response_data), 200
         else:
