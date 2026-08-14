@@ -15,6 +15,7 @@ Record shape and derived-field invariants are documented in
 import hashlib
 import json
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, cast
 
@@ -107,6 +108,39 @@ def _content_hash(nodes: List[Dict[str, Any]]) -> str:
     """Compute the canonical SHA-256 hash of ``content.nodes``."""
     digest = hashlib.sha256(_canonical_json(nodes).encode("utf-8")).hexdigest()
     return f"sha256:{digest}"
+
+
+_VALID_NODE_TYPES = frozenset({"title", "paragraph", "image", "list"})
+
+
+def _validate_node_types(nodes: List[Dict[str, Any]]) -> List[str]:
+    """Return any unsupported node types found in ``content.nodes``."""
+    invalid: List[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            invalid.append(str(type(node).__name__))
+            continue
+        node_type = node.get("type")
+        if node_type not in _VALID_NODE_TYPES:
+            invalid.append(str(node_type))
+    return invalid
+
+
+def _derive_item_fields(nodes: List[Dict[str, Any]]) -> Tuple[str, str]:
+    """
+    Validate ``content.nodes`` and derive the plain-text and hash fields.
+
+    This is the shared derivation step used by both the batch reindex job and
+    the single-item authoring endpoints so the two paths never diverge.
+    """
+    invalid = _validate_node_types(nodes)
+    if invalid:
+        raise ValueError(
+            f"Unsupported node type(s): {', '.join(sorted(set(invalid)))}"
+        )
+    plain_text = _derive_plain_text(nodes)
+    content_hash = _content_hash(nodes)
+    return plain_text, content_hash
 
 
 def _preview_text(plain_text: str, max_length: int = 200) -> str:
@@ -502,6 +536,113 @@ class StructuredContentService:
         finally:
             await self.db.close()
         return await self.get_item(local_id)
+
+    async def _index_single_item(self, doc: Dict[str, Any]) -> None:
+        """Upsert a single document into the live Typesense alias."""
+        if not self.typesense_url or not self.typesense_key:
+            logger.warning(
+                "Typesense not configured; skipping single-item index publish."
+            )
+            return
+
+        headers = {
+            "X-TYPESENSE-API-KEY": self.typesense_key,
+            "Content-Type": "application/json",
+        }
+        try:
+            requests.post(
+                f"{self.typesense_url}/collections/{self.typesense_alias}/documents",
+                headers=headers,
+                params={"action": "upsert"},
+                json=doc,
+                timeout=10,
+            ).raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning(
+                f"Failed to publish single structured content item to Typesense: {exc}"
+            )
+
+    async def save_item(
+        self,
+        local_id: Optional[str],
+        content: Dict[str, Any],
+        title: str,
+        tags: List[str],
+        cluster: str,
+    ) -> Dict[str, Any]:
+        """
+        Create or update a single authored item with derived-field invariants.
+
+        Re-uses the same derivation helpers used by the batch reindex path:
+        ``_derive_plain_text`` and ``_content_hash``.  Embeds only when the
+        content hash changes or the record is new.  Always publishes the
+        resulting document to the live Typesense alias (never a versioned swap).
+        """
+        nodes = content.get("nodes", []) if isinstance(content, dict) else []
+        if not isinstance(nodes, list):
+            raise ValueError("content.nodes must be an array")
+
+        plain_text, content_hash = _derive_item_fields(nodes)
+
+        existing: Optional[Dict[str, Any]] = None
+        if local_id:
+            existing = await self.get_item(local_id)
+
+        target_id = local_id.split(":")[-1] if local_id else str(uuid.uuid4())
+
+        skip_embed = (
+            existing is not None
+            and existing.get("content_hash") == content_hash
+            and existing.get("embed_model") == self.embed_model
+        )
+
+        embedding: Optional[List[float]] = None
+        embed_model: Optional[str] = None
+        if not skip_embed:
+            migration_client = AsyncOpenAI(api_key=MIGRATION_OPENAI_API_KEY)
+            embedding = await self._embed_one(migration_client, plain_text)
+            embed_model = self.embed_model
+
+        record: Dict[str, Any] = {
+            "title": title,
+            "tags": tags,
+            "cluster": cluster,
+            "scope": "global",
+            "content": content,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if not skip_embed:
+            record["plain_text"] = plain_text
+            record["content_hash"] = content_hash
+            record["embedding"] = embedding
+            record["embed_model"] = embed_model
+
+        if existing is None:
+            record["created_at"] = datetime.now(timezone.utc).isoformat()
+
+        await self.db.connect()
+        try:
+            await self.db.query(
+                f"UPSERT {TABLE_NAME}:{target_id} MERGE $data;",
+                {"data": record},
+            )
+        finally:
+            await self.db.close()
+
+        saved = await self.get_item(target_id)
+        if not saved:
+            saved = {**record, "id": f"{TABLE_NAME}:{target_id}"}
+
+        await self._index_single_item({
+            "id": _record_id_to_str(saved.get("id", f"{TABLE_NAME}:{target_id}")),
+            "title": title,
+            "plain_text": saved.get("plain_text", plain_text),
+            "tags": tags,
+            "cluster": cluster,
+            "scope": "global",
+        })
+
+        return saved
 
     # ------------------------------------------------------------------
     # Ingest / reindex

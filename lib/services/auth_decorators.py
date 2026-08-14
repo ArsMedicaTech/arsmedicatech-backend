@@ -206,6 +206,46 @@ def require_patient(f: F) -> F:
     return require_role("patient")(f)
 
 
+def require_admin_or_provider(f: F) -> F:
+    """
+    Decorator to require an authenticated admin or provider session.
+
+    This is an authoring-surface guard: unauthenticated callers and patient-role
+    callers are both rejected with 403 Forbidden.
+    :param f: The function to decorate (Flask route handler).
+    :return: The decorated function that checks for an admin or provider role.
+    """
+
+    @wraps(f)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+        if request.method == "OPTIONS":
+            return current_app.make_default_options_response()
+
+        # Require authentication; treat any auth failure as 403 for this surface.
+        auth_result = require_auth(lambda: None)()
+        if auth_result is not None:
+            if isinstance(auth_result, tuple) and len(auth_result) == 2 and auth_result[1] == 401:
+                return jsonify({"error": "Authentication required"}), 403
+            return auth_result
+
+        user_session = getattr(g, "user_session", None)
+        if not user_session:
+            return jsonify({"error": "Authentication required"}), 403
+
+        user_service = UserService()
+        user_service.connect()
+        try:
+            user = user_service.get_user_by_id(user_session.user_id)
+            if not user or not (user.is_admin() or user.is_provider()):
+                return jsonify({"error": "Admin or provider role required"}), 403
+            return f(*args, **kwargs)
+        finally:
+            user_service.close()
+
+    return cast(F, decorated_function)
+
+
 def optional_auth(f: F) -> F:
     """
     Decorator to optionally authenticate user (doesn't fail if no auth)

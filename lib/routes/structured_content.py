@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, Response, g, jsonify, request
 
-from lib.services.auth_decorators import require_auth
+from lib.services.auth_decorators import require_admin_or_provider, require_auth
 from lib.services.structured_content_service import StructuredContentService
 from settings import logger
 
@@ -160,3 +160,75 @@ def ingest_content_route() -> Tuple[Response, int]:
     except Exception as exc:
         logger.error(f"Failed to ingest structured content from {source_path}: {exc}", exc_info=True)
         return jsonify({"error": "Ingest failed"}), 500
+
+
+def _item_payload() -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[Response, int]]]:
+    """Validate and normalize a single-item create/update request body."""
+    if not request.is_json:
+        return None, (jsonify({"error": "JSON body required"}), 400)
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None, (jsonify({"error": "JSON body must be an object"}), 400)
+
+    title = data.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return None, (jsonify({"error": "Field 'title' is required"}), 400)
+
+    tags = data.get("tags", [])
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        return None, (jsonify({"error": "Field 'tags' must be an array of strings"}), 400)
+
+    cluster = data.get("cluster")
+    if not isinstance(cluster, str) or not cluster.strip():
+        return None, (jsonify({"error": "Field 'cluster' is required"}), 400)
+
+    content = data.get("content")
+    if not isinstance(content, dict):
+        return None, (jsonify({"error": "Field 'content' must be an object"}), 400)
+    nodes = content.get("nodes")
+    if not isinstance(nodes, list):
+        return None, (jsonify({"error": "Field 'content.nodes' must be an array"}), 400)
+
+    return {
+        "title": title.strip(),
+        "tags": tags,
+        "cluster": cluster.strip(),
+        "content": content,
+    }, None
+
+
+@structured_content_bp.route("/api/content/items", methods=["POST"])
+@require_admin_or_provider
+def create_content_item_route() -> Tuple[Response, int]:
+    """Create a single authored content item."""
+    payload, error = _item_payload()
+    if error:
+        return error
+
+    try:
+        record = _run(_service().save_item(None, **payload))
+        return jsonify(record), 201
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"Failed to create structured content item: {exc}", exc_info=True)
+        return jsonify({"error": "Failed to create content item"}), 500
+
+
+@structured_content_bp.route("/api/content/items/<item_id>", methods=["PUT"])
+@require_admin_or_provider
+def update_content_item_route(item_id: str) -> Tuple[Response, int]:
+    """Update a single authored content item by id."""
+    payload, error = _item_payload()
+    if error:
+        return error
+
+    try:
+        record = _run(_service().save_item(item_id, **payload))
+        return jsonify(record), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"Failed to update structured content item {item_id}: {exc}", exc_info=True)
+        return jsonify({"error": "Failed to update content item"}), 500

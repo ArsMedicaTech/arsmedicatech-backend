@@ -48,9 +48,12 @@ sys.modules["settings"] = fake_settings
 if "sentry_sdk" not in sys.modules:
     sys.modules["sentry_sdk"] = MagicMock()
 
-# Bypass the real auth decorator so these tests can focus on route logic.
+# Bypass the real auth decorators so these tests can focus on route logic.
 with patch(
     "lib.services.auth_decorators.require_auth", side_effect=_passthrough_decorator
+), patch(
+    "lib.services.auth_decorators.require_admin_or_provider",
+    side_effect=_passthrough_decorator,
 ):
     from lib.routes.structured_content import structured_content_bp
 
@@ -269,3 +272,98 @@ class TestIngestRoute:
         assert response.status_code == 200
         assert response.get_json()["imported"] == 3
         service.ingest_from_legacy.assert_awaited_once_with("/tmp/data.json", embed=False)
+
+
+class TestCreateContentItem:
+    def _valid_payload(self):
+        return {
+            "title": "Managing BP",
+            "tags": ["cardio"],
+            "cluster": "cardiovascular",
+            "content": {
+                "nodes": [
+                    {"type": "title", "text": "Managing BP"},
+                    {"type": "paragraph", "text": "Some text."},
+                ]
+            },
+        }
+
+    def test_creates_item(self, client):
+        saved = {"id": "structured_content:new-id", "title": "Managing BP"}
+        with patch(
+            "lib.routes.structured_content.StructuredContentService"
+        ) as mock_service_cls:
+            service = mock_service_cls.return_value
+            service.save_item = AsyncMock(return_value=saved)
+
+            response = client.post(
+                "/api/content/items",
+                data=json.dumps(self._valid_payload()),
+                content_type="application/json",
+            )
+
+        assert response.status_code == 201
+        assert response.get_json()["id"] == "structured_content:new-id"
+        service.save_item.assert_awaited_once()
+        args, kwargs = service.save_item.call_args
+        assert args[0] is None
+        assert kwargs["title"] == "Managing BP"
+        assert kwargs["tags"] == ["cardio"]
+        assert kwargs["cluster"] == "cardiovascular"
+
+    def test_requires_fields(self, client):
+        response = client.post(
+            "/api/content/items",
+            data=json.dumps({"title": "T"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_rejects_invalid_node_type(self, client):
+        payload = self._valid_payload()
+        payload["content"]["nodes"].append({"type": "video"})
+        with patch(
+            "lib.routes.structured_content.StructuredContentService"
+        ) as mock_service_cls:
+            service = mock_service_cls.return_value
+            service.save_item = AsyncMock(side_effect=ValueError("Unsupported node type"))
+
+            response = client.post(
+                "/api/content/items",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+
+        assert response.status_code == 400
+
+
+class TestUpdateContentItem:
+    def _valid_payload(self):
+        return {
+            "title": "Updated",
+            "tags": ["tag"],
+            "cluster": "cluster",
+            "content": {"nodes": [{"type": "paragraph", "text": "Updated text."}]},
+        }
+
+    def test_updates_item(self, client):
+        saved = {"id": "structured_content:bp", "title": "Updated"}
+        with patch(
+            "lib.routes.structured_content.StructuredContentService"
+        ) as mock_service_cls:
+            service = mock_service_cls.return_value
+            service.save_item = AsyncMock(return_value=saved)
+
+            response = client.put(
+                "/api/content/items/bp",
+                data=json.dumps(self._valid_payload()),
+                content_type="application/json",
+            )
+
+        assert response.status_code == 200
+        assert response.get_json()["title"] == "Updated"
+        service.save_item.assert_awaited_once_with("bp", **self._valid_payload())
+
+    def test_requires_body(self, client):
+        response = client.put("/api/content/items/bp")
+        assert response.status_code == 400
