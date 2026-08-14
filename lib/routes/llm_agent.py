@@ -5,6 +5,7 @@ LLM Agent Endpoint
 import asyncio
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+from amt_nano.services.encryption import get_encryption_service
 from flask import Response, jsonify, request
 
 from lib.data_types import UserID
@@ -18,17 +19,18 @@ from lib.llm.agent import (
 from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
 from lib.services.auth_decorators import get_current_user
 from lib.services.llm_chat_service import LLMChatService
+from lib.services.llm_trace_service import build_trace_context
 from lib.services.openai_security import get_openai_security_service
-from settings import AGENT_VERSION, MCP_URL, logger, mcp_config
+from settings import AGENT_VERSION, MCP_TRUSTED_HOSTS, MCP_URL, logger, mcp_config
 
 
 async def _get_agent_response(
     mcp_conf: Dict[str, Any],
     api_key: str,
-    prompt: str,
     history: List[Dict[str, Any]],
     response_format: Any,
     client_mcp_config: Optional[Dict[str, Any]] = None,
+    trace_context: Optional[Dict[str, Any]] = None,
     **kwargs: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
@@ -36,16 +38,24 @@ async def _get_agent_response(
 
     :param mcp_conf: Base server-side MCP configuration
     :param api_key: API key for accessing the LLM service
-    :param prompt: User prompt to send to the LLM
-    :param history: Conversation history
+    :param history: Conversation history (the current user turn is already persisted)
     :param response_format: Format for the LLM's response
     :param client_mcp_config: Optional client-side MCP configuration to merge with server config
+    :param trace_context: Optional dict for SurrealDB observability (db_controller, trace_id, etc.)
     :param kwargs: Additional parameters
     :return: Dict containing the LLM's response and tool usage information
     """
     # Merge client config with server config if provided
     merged_config = merge_mcp_configs(mcp_conf, client_mcp_config)
-    manager = HierarchicalAgentManager(merged_config)
+
+    # Forward the user's encrypted OpenAI key as an x-session-token header so
+    # tools (e.g. `rag`) that need per-user credentials can read it server-side.
+    session_token = get_encryption_service().encrypt_api_key(api_key)
+    manager = HierarchicalAgentManager(
+        merged_config,
+        session_token=session_token,
+        trusted_hosts=MCP_TRUSTED_HOSTS,
+    )
 
     async with manager:
         system_prompt_val = kwargs.get("system_prompt", DEFAULT_SYSTEM_PROMPT)
@@ -65,15 +75,19 @@ async def _get_agent_response(
         agent.tool_definitions = cast(List[ToolDefinition], manager.openai_defs)
         agent.tool_func_dict = manager.func_lookup
 
-        # 4) Set the conversation history from the database
-        # History is already in the correct format from get_thread_history
-        # (list of dicts with 'role' and 'content' keys)
-        agent.message_history = history
+        # 4) Set the conversation history from the database, preserving the
+        #    system prompt that was configured on the agent. The current user
+        #    turn is already part of *history*, so we pass prompt=None to
+        #    complete() to avoid sending it twice.
+        agent.message_history = [
+            {"role": "system", "content": system_prompt}
+        ] + history
 
         # 3. Get the completion from the agent
         response = await agent.complete(
-            prompt,
+            None,
             response_format=response_format,
+            trace_context=trace_context,
         )
         return response
 
@@ -169,6 +183,8 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             if not prompt:
                 return jsonify({"error": "No prompt provided"}), 400
 
+            system_context = data.get("system_context")
+
             # Determine thread ID: either provided directly or find/create based on context
             thread_id = data.get("thread_id")
             context = data.get(
@@ -240,6 +256,12 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             if client_mcp_config and not isinstance(client_mcp_config, dict):
                 return jsonify({"error": "mcp_config must be a dictionary"}), 400
 
+            trace_context = build_trace_context(
+                llm_chat_service.db,
+                thread_id=thread_id,
+                user_id=str(current_user_id),
+            )
+
             if AGENT_VERSION:
                 # raise NotImplementedError("LLM Agent v2 is not yet implemented")
                 # agent = asyncio.run(
@@ -253,10 +275,11 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                     _get_agent_response(
                         mcp_conf=agent_mcp_config,
                         api_key=openai_api_key,
-                        prompt=prompt,
                         history=history,
                         response_format=response_format,
                         client_mcp_config=client_mcp_config,
+                        trace_context=trace_context,
+                        system_prompt=system_context or DEFAULT_SYSTEM_PROMPT,
                     )
                 )
             else:
@@ -269,10 +292,14 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
                 )
 
                 response = asyncio.run(
-                    agent.complete(prompt, response_format=response_format)
+                    agent.complete(
+                        prompt,
+                        response_format=response_format,
+                        trace_context=trace_context,
+                    )
                 )
 
-            logger.debug("response", type(response), response)
+            logger.debug(f"response ({type(response)}): {response}")
 
             # Log API usage (only if using stored key, not if provided in request)
             if not data.get("openai_api_key"):
@@ -303,6 +330,7 @@ def llm_agent_endpoint_route() -> Tuple[Response, int]:
             response_data["messages"] = messages
             response_data["thread_id"] = thread_id
             response_data["used_tools"] = used_tools
+            response_data["trace_id"] = trace_context["trace_id"]
 
             return jsonify(response_data), 200
         else:

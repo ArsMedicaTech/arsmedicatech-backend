@@ -5,6 +5,7 @@ LLM Agent Module
 import enum
 import inspect
 import json
+import time
 from typing import (
     Any,
     Callable,
@@ -25,7 +26,8 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionMessageT
 
 from lib.llm.mcp_tools import fetch_mcp_tool_defs
 from lib.llm.v2.hierarchical_agent import HierarchicalAgentManager
-from settings import logger
+from lib.services.llm_trace_service import LLMTraceLogger
+from settings import MCP_TRUSTED_HOSTS, logger
 
 
 def merge_mcp_configs(
@@ -74,8 +76,6 @@ Your responses should be accurate, concise, and helpful.
 DEFAULT_SYSTEM_PROMPT += "You have access to tools that can help you provide better information. When you need to search for specific information or perform tasks that would benefit from using these tools, please use them. Don't hesitate to use tools when they would be helpful for providing accurate and comprehensive responses."  # type: ignore
 DEFAULT_SYSTEM_PROMPT += "\n\n"  # type: ignore
 DEFAULT_SYSTEM_PROMPT += "In fact, if there is a tool that matches a user request, you must use it. Do not make up information that can be retrieved by using a tool. Always prefer using a tool when available, even when the result may seem simple or obvious, because part of the philosophy of this software system is explainability and providing a chain of evidence for decisions.\n\n"  # type: ignore
-
-tools_with_keys = ["rag"]
 
 from openai.types.chat import ChatCompletionToolParam
 
@@ -193,9 +193,12 @@ async def process_tool_call(
         )  # [DEBUG] Function: rag -> _call
 
     tool_function = tool_dict[function_name]
-    # Check if this is an MCP tool by checking if it's a wrapped function from fetch_mcp_tool_defs
-    # MCP tools are wrapped and always require session_id parameter
-    if function_name in tools_with_keys:
+    # v1 wrappers (fetch_mcp_tool_defs) declare `session_id` as a keyword-only
+    # parameter and turn it into an x-session-token header. v2 wrappers
+    # (HierarchicalAgentManager) take **kwargs only and receive the token via
+    # per-request client headers instead, so forwarding session_id there would
+    # leak it into the tool arguments and fail server-side validation.
+    if "session_id" in inspect.signature(tool_function).parameters:
         tool_result = await tool_function(session_id=session_id, **arguments)
     else:
         tool_result = await tool_function(**arguments)
@@ -388,7 +391,7 @@ class LLMAgent:
         logger.debug(f"Found {len(defs)} tools from MCP server")
         for d in defs:
             name = d["function"]["name"]
-            logger.debug("Adding tool:", d["function"]["name"], funcs[name], d)
+            logger.debug(f"Adding tool: {name} -> {funcs[name]} | {d}")
             agent.add_tool(name, funcs[name], cast(ToolDefinition, d))
 
         if len(defs) == 0:
@@ -417,8 +420,15 @@ class LLMAgent:
         # Merge client config with server config if provided
         merged_config = merge_mcp_configs(mcp_config, client_mcp_config)
 
-        # 1) Instantiate and connect the HierarchicalAgentManager
-        agent_manager = HierarchicalAgentManager(merged_config)
+        # 1) Instantiate and connect the HierarchicalAgentManager, forwarding
+        # the user's encrypted OpenAI key as an x-session-token header so
+        # tools like `rag` that need it can read it server-side.
+        session_token = get_encryption_service().encrypt_api_key(api_key)
+        agent_manager = HierarchicalAgentManager(
+            merged_config,
+            session_token=session_token,
+            trusted_hosts=MCP_TRUSTED_HOSTS,
+        )
 
         # 2) Instantiate the LLMAgent as before
         model_str = model.value if model else LLMModel.GPT_5_NANO.value
@@ -480,12 +490,15 @@ class LLMAgent:
         self,
         prompt: Optional[str],
         response_format: Optional[Any] = None,
+        trace_context: Optional[Dict[str, Any]] = None,
         **kwargs: Dict[str, str],
     ) -> Dict[str, Any]:
         """
         Complete a prompt using the LLM, processing any tool calls if necessary.
         :param prompt: The user prompt to send to the LLM. If None, uses the existing message history.
         :param response_format: The format for the LLM's response (e.g., text, json).
+        :param trace_context: Optional dict with keys db_controller, trace_id, thread_id,
+                              user_id, and turn_index for SurrealDB observability.
         :param kwargs: Additional parameters for the LLM completion (e.g., temperature, max_tokens).
         :return: Dict containing the LLM's response and tool usage information.
         """
@@ -497,8 +510,8 @@ class LLMAgent:
 
         api_key = get_encryption_service().encrypt_api_key(self.api_key)
 
-        logger.debug("Sending request to OpenAI with model:", self.model.value)
-        logger.debug("API Key:", api_key)
+        logger.debug(f"Sending request to OpenAI with model: {self.model.value}")
+        logger.debug(f"API Key: {api_key}")
 
         if not api_key:
             raise ValueError("API key is required for LLM access.")
@@ -509,6 +522,11 @@ class LLMAgent:
 
         logger.debug(f"Making OpenAI API call with {len(self.tool_definitions)} tools")
         logger.debug(f"Tool definitions: {self.tool_definitions}")
+
+        if not messages or messages[0].get("role") != "system":
+            logger.warning(
+                "First message is not a system message; the prompt may be ungrounded."
+            )
 
         llm_kwargs = LLMKwargs(
             model=self.model.value,
@@ -526,7 +544,37 @@ class LLMAgent:
         else:
             llm_func: Callable[..., Any] = self.client.beta.chat.completions.parse  # type: ignore
 
-        completion = llm_func(**llm_kwargs)
+        trace_record_id: Optional[str] = None
+        start_time: Optional[float] = None
+        if trace_context:
+            trace_logger = LLMTraceLogger(trace_context["db_controller"])
+            trace_record_id = trace_logger.log_pre_call(
+                trace_id=trace_context["trace_id"],
+                thread_id=trace_context.get("thread_id"),
+                user_id=trace_context.get("user_id"),
+                turn_index=trace_context.get("turn_index", 0),
+                model=self.model.value,
+                messages=messages,
+                tool_definitions=self.tool_definitions,
+                response_format=response_format,
+            )
+            start_time = time.time()
+
+        try:
+            completion = llm_func(**llm_kwargs)
+        except Exception as exc:
+            if trace_context and trace_record_id is not None and start_time is not None:
+                duration_ms = int((time.time() - start_time) * 1000)
+                LLMTraceLogger(trace_context["db_controller"]).log_post_call_exception(
+                    trace_record_id, exc=exc, duration_ms=duration_ms
+                )
+            raise
+
+        if trace_context and trace_record_id is not None and start_time is not None:
+            duration_ms = int((time.time() - start_time) * 1000)
+            LLMTraceLogger(trace_context["db_controller"]).log_post_call(
+                trace_record_id, completion=completion, duration_ms=duration_ms
+            )
 
         # You tried to pass a `BaseModel` class to `chat.completions.create()`; You must use `beta.chat.completions.parse()` instead
 
@@ -534,15 +582,26 @@ class LLMAgent:
 
         # process tool calls if any...
         tool_calls = top_choice.tool_calls
-        logger.debug("Top choice:", top_choice)
+        logger.debug(f"Top choice: {top_choice}")
 
         if tool_calls:
             # Track tool usage
             used_tools = [tool_call.function.name for tool_call in tool_calls]
             await self.process_tool_calls(tool_calls, top_choice.content or "")
 
-            # Recurse to handle tool calls
-            result = await self.complete(None, **kwargs)
+            # Recurse to handle tool calls, incrementing the observability turn index
+            next_trace_context = None
+            if trace_context:
+                next_trace_context = {
+                    **trace_context,
+                    "turn_index": trace_context.get("turn_index", 0) + 1,
+                }
+            result = await self.complete(
+                None,
+                response_format=response_format,
+                trace_context=next_trace_context,
+                **kwargs,
+            )
             # Merge tool usage from recursive call
             if "used_tools" in result:
                 used_tools.extend(result["used_tools"])
@@ -571,8 +630,8 @@ class LLMAgent:
 
         api_key = get_encryption_service().encrypt_api_key(self.api_key)
 
-        logger.debug("Sending request to OpenAI with model:", self.model.value)
-        logger.debug("API Key:", api_key)
+        logger.debug(f"Sending request to OpenAI with model: {self.model.value}")
+        logger.debug(f"API Key: {api_key}")
 
         if not api_key:
             raise ValueError("API key is required for LLM access.")

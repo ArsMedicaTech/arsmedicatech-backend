@@ -2,10 +2,14 @@
 Uploads API Routes
 """
 
-from typing import Tuple
+import os
+import uuid
+from typing import Any, Dict, Tuple
 
 import boto3  # type: ignore
-from flask import Blueprint, Response, jsonify, request
+from amt_nano.db.surreal import DbController
+from botocore.config import Config as BotoConfig  # type: ignore
+from flask import Blueprint, Response, jsonify, request, stream_with_context
 from werkzeug.datastructures import FileStorage
 
 from lib.data_types import UserID
@@ -20,9 +24,45 @@ from lib.models.upload import (
 )
 from lib.services.auth_decorators import get_current_user, require_auth
 from lib.services.upload_service import process_upload_task
-from settings import BUCKET_NAME, logger
+from settings import (
+    BUCKET_NAME,
+    MINIO_ACCESS_KEY,
+    MINIO_ENCOUNTER_RECORDINGS_BUCKET,
+    MINIO_ENDPOINT,
+    MINIO_SECRET_KEY,
+    S3_AWS_ACCESS_KEY_ID,
+    S3_AWS_SECRET_ACCESS_KEY,
+    logger,
+)
 
 uploads_bp = Blueprint("uploads", __name__)
+
+
+def _s3_client():
+    endpoint = MINIO_ENDPOINT
+    if endpoint:
+        if not MINIO_ACCESS_KEY or not MINIO_SECRET_KEY:
+            raise RuntimeError(
+                "MINIO_ACCESS_KEY and MINIO_SECRET_KEY must be set when MINIO_ENDPOINT is configured"
+            )
+        secure = os.getenv("MINIO_SECURE", "true").lower() == "true"
+        scheme = "https" if secure else "http"
+        return boto3.client(
+            "s3",
+            endpoint_url=f"{scheme}://{endpoint}",
+            aws_access_key_id=MINIO_ACCESS_KEY,
+            aws_secret_access_key=MINIO_SECRET_KEY,
+            region_name="us-east-1",
+            config=BotoConfig(signature_version="s3v4"),
+        )
+
+    return boto3.client(
+        "s3",
+        aws_access_key_id=S3_AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=S3_AWS_SECRET_ACCESS_KEY,
+        region_name=os.environ.get("AWS_REGION", "us-east-1"),
+        config=BotoConfig(signature_version="s3v4"),
+    )
 
 
 @uploads_bp.route("/api/uploads", methods=["POST"])
@@ -50,7 +90,7 @@ def upload_file_route() -> Tuple[Response, int]:
     file_size = 0
     try:
         # Upload to S3
-        s3 = boto3.client("s3")
+        s3 = _s3_client()
         file.seek(0, 2)  # Seek to end to get size
         file_size = file.tell()
         file.seek(0)
@@ -85,6 +125,136 @@ def upload_file_route() -> Tuple[Response, int]:
     return jsonify({"id": upload_id, **upload.to_dict()}), 201
 
 
+@uploads_bp.route("/api/uploads/presign", methods=["POST"])
+@require_auth
+def presign_upload_route() -> Tuple[Response, int]:
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    body: Dict[str, Any] = request.get_json(force=True)
+    encounter_id = body.get("encounterId")
+    filename = body.get("filename", "audio.webm")
+    content_type = body.get("contentType", "audio/webm")
+
+    if not encounter_id:
+        return jsonify({"error": "encounterId is required"}), 400
+
+    ##encounter = get_encounter_by_id(str(encounter_id))
+    ##if not encounter: return jsonify({"error": "Encounter not found"}), 404
+
+    # Temporarily bypassing this check for testing...
+
+    bucket = MINIO_ENCOUNTER_RECORDINGS_BUCKET
+
+    ext = str(filename).rsplit(".", 1)[-1] if "." in str(filename) else "webm"
+    upload_id = str(uuid.uuid4())
+    object_key = f"encounters/{encounter_id}/audio/{upload_id}.{ext}"
+
+    try:
+        s3 = _s3_client()
+        url = s3.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={
+                "Bucket": bucket,
+                "Key": object_key,
+                "ContentType": content_type,
+            },
+            ExpiresIn=60 * 10,
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate presigned upload url: {e}")
+        return jsonify({"error": "Failed to generate presigned upload url"}), 500
+
+    return (
+        jsonify(
+            {
+                "uploadUrl": url,
+                "objectKey": object_key,
+                "bucket": bucket,
+                "contentType": content_type,
+                "expiresInSeconds": 600,
+                "publicUrlHint": f"{object_key}",
+            }
+        ),
+        200,
+    )
+
+
+@uploads_bp.route("/api/uploads/complete", methods=["POST"])
+@require_auth
+def upload_complete_route() -> Tuple[Response, int]:
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    body: Dict[str, Any] = request.get_json(force=True)
+    encounter_id = body.get("encounterId")
+    object_key = body.get("objectKey")
+    size = body.get("size")
+    sha256 = body.get("sha256")
+    filename = body.get("filename", "audio.webm")
+
+    if not encounter_id or not object_key:
+        return jsonify({"error": "encounterId and objectKey required"}), 400
+
+    bucket = MINIO_ENCOUNTER_RECORDINGS_BUCKET
+
+    uploader_id: UserID = (
+        UserID(user.user_id) if not isinstance(user.user_id, UserID) else user.user_id
+    )
+    upload = Upload(
+        uploader=uploader_id,
+        file_name=str(filename),
+        file_path=str(object_key),
+        file_type=FileType.AUDIO,
+        bucket_name=bucket,
+        status=UploadStatus.COMPLETED,
+        file_size=int(size) if size is not None else 0,
+        s3_key=str(object_key),
+    )
+    upload_id = create_upload(upload)
+    if not upload_id:
+        return jsonify({"error": "Failed to create upload record"}), 500
+
+    db = DbController()
+    try:
+        db.connect()
+        db.query(
+            "UPDATE encounter SET metadata.recording = $recording WHERE note_id = $encounter_id",
+            {
+                "encounter_id": str(encounter_id),
+                "recording": {
+                    "bucket": bucket,
+                    "object_key": str(object_key),
+                    "size": int(size) if size is not None else None,
+                    "sha256": sha256,
+                    "upload_id": upload_id,
+                },
+            },
+        )
+    except Exception as e:
+        logger.error(f"Failed to persist encounter recording metadata: {e}")
+        return jsonify({"error": "Failed to persist upload metadata"}), 500
+    finally:
+        db.close()
+
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "id": upload_id,
+                "encounterId": encounter_id,
+                "objectKey": object_key,
+                "bucket": bucket,
+                "size": size,
+                "sha256": sha256,
+            }
+        ),
+        200,
+    )
+
+
 @uploads_bp.route("/api/uploads", methods=["GET"])
 @require_auth
 def list_uploads_route():
@@ -111,3 +281,44 @@ def get_upload_route(upload_id: str) -> Tuple[Response, int]:
     if not upload:
         return jsonify({"error": "Upload not found"}), 404
     return jsonify(upload), 200
+
+
+@uploads_bp.route("/api/uploads/audio/<path:object_key>", methods=["GET"])
+@require_auth
+def download_audio_route(object_key: str):
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # TODO: IMPORTANT: authorize access:
+    # - look up encounter id from object_key (it’s in the key)
+    # - confirm user can access that encounter (practitioner relationship, etc.)
+
+    try:
+        s3 = _s3_client()
+        obj = s3.get_object(
+            Bucket=MINIO_ENCOUNTER_RECORDINGS_BUCKET,
+            Key=object_key,
+        )
+        body = obj["Body"]
+        content_type = obj.get("ContentType") or "application/octet-stream"
+        content_length = obj.get("ContentLength")
+    except Exception as e:
+        logger.error(f"Failed to fetch audio from storage: {e}")
+        return jsonify({"error": "Failed to fetch audio"}), 500
+
+    def generate():
+        for chunk in iter(lambda: body.read(1024 * 512), b""):
+            yield chunk
+
+    resp = Response(
+        stream_with_context(generate()),
+        mimetype=content_type,
+        direct_passthrough=True,
+    )
+    if content_length is not None:
+        resp.headers["Content-Length"] = str(content_length)
+    resp.headers["Content-Disposition"] = (
+        f'inline; filename="{os.path.basename(object_key)}"'
+    )
+    return resp

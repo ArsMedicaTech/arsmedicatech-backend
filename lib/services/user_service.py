@@ -10,6 +10,7 @@ from amt_nano.db.surreal import DbController
 from lib.models.user.user import User, UserRoles
 from lib.models.user.user_session import UserSession
 from lib.models.user.user_settings import UserSettings
+from lib.services.fhir_client import ensure_practitioner
 from settings import logger
 
 
@@ -191,6 +192,14 @@ class UserService:
         """
         try:
             # Validate input
+            if is_federated and not external_id:
+                logger.warning("Refusing to create federated user without an external identity")
+                return CreateUserResult(
+                    success=False,
+                    message="Federated users require an external identity",
+                    user=None,
+                )
+
             valid, msg = User.validate_username(username)
             if not valid:
                 logger.debug(f"Failed to validate username:{msg}")
@@ -250,7 +259,54 @@ class UserService:
             # logger.debug(f"Database create result type: {type(result)}")
 
             if result and result["id"]:
-                user.id = result["id"]
+                user.id = str(result["id"])
+
+                # Ensure FHIR linkage IDs are populated and consistent with role
+                try:
+                    if user.role == "provider":
+                        user.fhir_patient_id = None
+                        if not user.fhir_practitioner_id and user.external_id:
+                            user.fhir_practitioner_id = f"pr-{user.external_id}"
+                    elif user.role == "patient":
+                        # fhir_patient_id is populated from the chart's real FHIR Patient below,
+                        # not fabricated. A null value is the honest "not yet linked" state.
+                        user.fhir_practitioner_id = None
+                    else:
+                        user.fhir_practitioner_id = None
+                        user.fhir_patient_id = None
+
+                    if user.role == "provider" and not user.fhir_practitioner_id:
+                        logger.warning(
+                            f"Provider user missing fhir_practitioner_id after creation: {user.id}"
+                        )
+
+                    # Persist linkage into SurrealDB
+                    if user.id:
+                        self._merge(
+                            str(user.id),
+                            {
+                                "fhir_practitioner_id": user.fhir_practitioner_id,
+                                "fhir_patient_id": user.fhir_patient_id,
+                            },
+                        )
+
+                    # Ensure the actual Practitioner resource exists in HAPI FHIR
+                    if user.role == "provider" and user.fhir_practitioner_id:
+                        try:
+                            ensure_practitioner(
+                                practitioner_id=user.fhir_practitioner_id,
+                                first_name=user.first_name,
+                                last_name=user.last_name,
+                                email=user.email,
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to ensure Practitioner/{user.fhir_practitioner_id} for user {user.id}: {e}"
+                            )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to populate FHIR linkage IDs for user {user.id}: {e}"
+                    )
 
                 if type(getattr(user, "id")) is not str:
                     raise TypeError("User ID is not a string")
@@ -293,7 +349,13 @@ class UserService:
                             if key != "location" and patient_data[key] is None:
                                 patient_data[key] = ""
                         patient_result = create_patient(patient_data)
-                        if not patient_result:
+                        if patient_result and patient_result.get("fhir_patient_id"):
+                            user.fhir_patient_id = patient_result["fhir_patient_id"]
+                            self._merge(
+                                str(user.id),
+                                {"fhir_patient_id": user.fhir_patient_id},
+                            )
+                        else:
                             logger.error(
                                 f"Failed to create patient record for user: {user.id}"
                             )
@@ -564,6 +626,28 @@ class UserService:
             logger.error(f"Error getting all users: {e}")
             return []
 
+    @staticmethod
+    def _normalize_user_id(user_id: str) -> str:
+        """Strip any existing table prefix so we never build a double-prefixed record ID."""
+        for prefix in ("User:", "user:"):
+            if user_id.startswith(prefix):
+                return user_id[len(prefix):]
+        return user_id
+
+    def _merge(self, thing: str, data: Dict[str, Any]) -> Any:
+        """
+        Merge a partial payload into an existing record instead of replacing it.
+        """
+        # SurrealDB's MERGE sets explicit None values to NONE, so strip unset fields
+        cleaned = {k: v for k, v in data.items() if v is not None}
+        if not cleaned:
+            return None
+        tb, _, rid = thing.partition(":")
+        return self.db.query(
+            "UPDATE type::thing($tb, $rid) MERGE $data",
+            {"tb": tb, "rid": rid, "data": cleaned},
+        )
+
     def update_user(self, user_id: str, updates: Dict[str, Any]) -> UpdateUserResult:
         """
         Update user information
@@ -577,7 +661,7 @@ class UserService:
             updates.pop("id", None)
             updates.pop("created_at", None)
 
-            result = self.db.update(f"User:{user_id}", updates)
+            result = self._merge(f"user:{self._normalize_user_id(user_id)}", updates)
             if result:
                 return {
                     "success": True,
@@ -628,7 +712,7 @@ class UserService:
             new_hash = User.hash_password(new_password)
 
             # Update password
-            result = self.db.update(f"User:{user_id}", {"password_hash": new_hash})
+            result = self._merge(f"user:{self._normalize_user_id(user_id)}", {"password_hash": new_hash})
             if result:
                 return True, "Password changed successfully"
             else:
@@ -644,7 +728,7 @@ class UserService:
         :return: (success, message)
         """
         try:
-            result = self.db.update(f"User:{user_id}", {"is_active": False})
+            result = self._merge(f"user:{self._normalize_user_id(user_id)}", {"is_active": False})
             if result:
                 return True, "User deactivated successfully"
             else:
@@ -661,7 +745,7 @@ class UserService:
         :return: (success, message)
         """
         try:
-            result = self.db.update(f"User:{user_id}", {"is_active": True})
+            result = self._merge(f"user:{self._normalize_user_id(user_id)}", {"is_active": True})
             if result:
                 return True, "User activated successfully"
             else:

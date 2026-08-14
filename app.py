@@ -48,6 +48,10 @@ from lib.routes.administration import (
     get_patients_route,
     get_providers_route,
 )
+from lib.routes.admin_provider_identity import (
+    get_oscar_provider_candidates_route,
+    link_oscar_provider_route,
+)
 from lib.routes.api_keys import (
     create_api_key_route,
     deactivate_api_key_route,
@@ -100,11 +104,15 @@ from lib.routes.patients import (
     update_encounter_route,
 )
 from lib.routes.testing import (
+    debug_sentry_route,
     debug_session_route,
     test_crud_route,
     test_surrealdb_route,
 )
+from lib.routes.icd_autocoder import icd_autocoder_bp
+from lib.routes.structured_content import structured_content_bp
 from lib.routes.uploads import uploads_bp
+from lib.routes.fhir_proxy import fhir_proxy_bp
 from lib.routes.user_notes import (
     create_note_route,
     delete_note_route,
@@ -114,6 +122,7 @@ from lib.routes.user_notes import (
 )
 from lib.routes.users import (
     activate_user_route,
+    admin_encrypt_route,
     change_password_route,
     check_users_exist_route,
     create_user_programmatically_route,
@@ -193,15 +202,17 @@ app.config["SESSION_PERMANENT"] = True
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=1)
 
 
+_cors_allows_any_origin = len(CORS_ORIGINS) == 1 and CORS_ORIGINS[0] == "*"
+
 CORS(
     app,
     resources={
         r"/*": {
             "origins": CORS_ORIGINS,
-            "supports_credentials": True,
+            "supports_credentials": False if _cors_allows_any_origin else True,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],
-            "expose_headers": ["Set-Cookie"],
+            "expose_headers": [] if _cors_allows_any_origin else ["Set-Cookie"],
         }
     },
 )
@@ -491,6 +502,12 @@ def register_page():
     # 1. Clear old states to prevent Mismatching State errors
     clear_keycloak_states()
 
+    # Capture the localhost URL from Flutter and store it
+    target = request.args.get("redirect_to")
+    if target:
+        session["active_frontend_url"] = target
+        session.modified = True
+
     redirect_uri = url_for("authorize", _external=True)
 
     # Ensure session is saved before redirecting (authlib stores OAuth state in session)
@@ -499,7 +516,10 @@ def register_page():
 
     # Passing kc_action="register" tells Keycloak's authorize endpoint
     # to jump directly to the registration form instead of the login form.
-    return oauth.keycloak.authorize_redirect(redirect_uri, kc_action="register")
+    #return oauth.keycloak.authorize_redirect(redirect_uri, kc_action="register")
+
+    # add prompt="login" to force Keycloak to ignore any existing session:
+    return oauth.keycloak.authorize_redirect(redirect_uri, kc_action="register", prompt="login")
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -510,6 +530,12 @@ def login() -> Tuple[Response, int]:
     """
     # 1. Clear old states to prevent Mismatching State errors
     clear_keycloak_states()
+
+    # Capture the localhost URL from Flutter and store it
+    target = request.args.get("redirect_to")
+    if target:
+        session["active_frontend_url"] = target
+        session.modified = True
 
     redirect_uri = url_for("authorize", _external=True)
 
@@ -526,6 +552,10 @@ def authorize():
     Handle Keycloak OAuth callback and create/update user in SurrealDB.
     This is called after a user authenticates or registers via Keycloak.
     """
+    # 1. Determine our final destination
+    # We check the session first, then fall back to the (Kubernetes) Env Var
+    final_frontend = session.get("active_frontend_url") or FRONTEND_REDIRECT
+
     try:
         # Log session state for debugging
         logger.debug(
@@ -546,18 +576,18 @@ def authorize():
                     "OAuth code already used or expired. Checking existing session..."
                 )
                 if "user_id" in session:
-                    return redirect(FRONTEND_REDIRECT)
+                    return redirect(final_frontend)
                 # If no session exists, we must force a re-login
                 return redirect(url_for("login", prompt="login"))
 
             logger.error(f"Handshake failed: {e}")
-            return redirect(f"{FRONTEND_REDIRECT}?error=auth_failed")
+            return redirect(f"{final_frontend}?error=auth_failed")
 
         user_info = token.get("userinfo")
 
         if not user_info:
             logger.error("No user info in Keycloak token")
-            return redirect(f"{FRONTEND_REDIRECT}?error=no_user_info")
+            return redirect(f"{final_frontend}?error=no_user_info")
 
         # Extract user information from Keycloak
         keycloak_user_id = user_info.get("sub")
@@ -585,7 +615,7 @@ def authorize():
 
         if not keycloak_user_id or not email:
             logger.error(f"Missing required user info from Keycloak: {user_info}")
-            return redirect(f"{FRONTEND_REDIRECT}?error=missing_user_info")
+            return redirect(f"{final_frontend}?error=missing_user_info")
 
         # Check if user exists in SurrealDB
         user_service = UserService()
@@ -605,14 +635,20 @@ def authorize():
             if existing_user:
                 # User exists - update if needed
                 logger.debug(f"Existing Keycloak user found: {existing_user.id}")
-                # Update external_id if it wasn't set before
-                if (
+                needs_identity_update = (
                     not existing_user.external_id
                     or existing_user.auth_provider != "keycloak"
-                ):
+                )
+                needs_practitioner_update = (
+                    existing_user.role == "provider"
+                    and not existing_user.fhir_practitioner_id
+                )
+                if needs_identity_update or needs_practitioner_update:
                     existing_user.external_id = keycloak_user_id
                     existing_user.auth_provider = "keycloak"
                     existing_user.is_federated = True
+                    if needs_practitioner_update:
+                        existing_user.fhir_practitioner_id = f"pr-{keycloak_user_id}"
                     user_service.update_user(
                         str(existing_user.id), existing_user.to_dict()
                     )
@@ -657,7 +693,7 @@ def authorize():
                         f"Failed to create Keycloak user in SurrealDB: {create_user_result['message']}"
                     )
                     return redirect(
-                        f"{FRONTEND_REDIRECT}?error=user_creation_failed&message={create_user_result['message']}"
+                        f"{final_frontend}?error=user_creation_failed&message={create_user_result['message']}"
                     )
 
                 existing_user = create_user_result["user"]
@@ -680,7 +716,7 @@ def authorize():
 
             if not user_session:
                 logger.error("Failed to create user session")
-                return redirect(f"{FRONTEND_REDIRECT}?error=session_creation_failed")
+                return redirect(f"{final_frontend}?error=session_creation_failed")
 
             # Store user info in session
             session["user"] = user_info
@@ -705,11 +741,11 @@ def authorize():
         finally:
             user_service.close()
 
-        return redirect(f"{FRONTEND_REDIRECT}?ott={ott}")
+        return redirect(f"{final_frontend}?ott={ott}")
 
     except Exception as e:
         logger.error(f"Error in Keycloak authorize callback: {e}", exc_info=True)
-        return redirect(f"{FRONTEND_REDIRECT}?error=auth_error&message={str(e)}")
+        return redirect(f"{final_frontend}?error=auth_error&message={str(e)}")
 
 
 @app.route("/api/auth/exchange", methods=["POST"])
@@ -822,7 +858,8 @@ def logout() -> Tuple[Response, int]:
     session.pop("user", None)
     return redirect(
         f"https://{KEYCLOAK_AUTH_HOST}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/logout"
-        f"?post_logout_redirect_uri={url_for('index', _external=True)}"
+        f"?post_logout_redirect_uri={FRONTEND_REDIRECT}"
+        f"&id_token_hint={session.get('auth_token', '')}"
     )
 
 
@@ -890,6 +927,17 @@ def create_user_programmatically() -> Tuple[Response, int]:
     return create_user_programmatically_route()
 
 
+@app.route("/api/admin/encrypt", methods=["POST"])
+@require_super_admin_key
+def admin_encrypt() -> Tuple[Response, int]:
+    """
+    Encrypt passed string values using the encryption service (super admin only).
+    Requires X-Super-Admin-Key header. Body: JSON object with string values.
+    :return: Response with encrypted_values map.
+    """
+    return admin_encrypt_route()
+
+
 @app.route("/api/admin/setup", methods=["POST"])
 def setup_default_admin() -> Tuple[Response, int]:
     """
@@ -937,6 +985,15 @@ def debug_session() -> Tuple[Response, int]:
     :return: Response object with session data.
     """
     return debug_session_route()
+
+
+@app.route("/api/debug/sentry", methods=["GET"])
+def debug_sentry() -> Tuple[Response, int]:
+    """
+    Debug endpoint that fires a test Sentry event with all Config values.
+    :return: Response confirming the event was sent.
+    """
+    return debug_sentry_route()
 
 
 @app.route("/api/users/search", methods=["GET"])
@@ -1922,6 +1979,9 @@ def serve_plugin_js(plugin_name: str) -> Tuple[Response, int]:
 # Register the SSE blueprint
 app.register_blueprint(sse_bp)
 app.register_blueprint(uploads_bp)
+app.register_blueprint(fhir_proxy_bp)
+app.register_blueprint(icd_autocoder_bp)
+app.register_blueprint(structured_content_bp)
 
 from asgiref.wsgi import WsgiToAsgi
 
@@ -2001,6 +2061,26 @@ def get_administrators(org_id: str) -> Tuple[Response, int]:
     return get_administrators_route(org_id)
 
 
+@app.route("/api/admin/providers/<user_id>/link-oscar-provider", methods=["POST"])
+def link_oscar_provider(user_id: str) -> Tuple[Response, int]:
+    """
+    Link an AMT provider account to an Oscar provider_no identity.
+    :param user_id: The ID of the provider user to link.
+    :return: Response object with the result of the link operation.
+    """
+    return link_oscar_provider_route(user_id)
+
+
+@app.route("/api/admin/providers/<user_id>/oscar-candidates", methods=["GET"])
+def get_oscar_provider_candidates(user_id: str) -> Tuple[Response, int]:
+    """
+    Get Oscar-synced Practitioner candidates matching the provider user's email.
+    :param user_id: The ID of the provider user to look up candidates for.
+    :return: Response object with candidate Practitioner resources.
+    """
+    return get_oscar_provider_candidates_route(user_id)
+
+
 @app.route("/api/ddx", methods=["POST"])
 def ddx_suggest() -> Tuple[Response, int]:
     """
@@ -2034,6 +2114,21 @@ def external_health_check() -> Tuple[Response, int]:
     :return: Response object indicating the health status externally.
     """
     return jsonify({"status": "healthy"}), 200
+
+
+@app.route("/api/debug-sentry-error")
+def api_trigger_error():
+    division_by_zero = 1 / 0
+    return "This will never be reached"
+
+
+@app.route("/api/debug-sentry-log")
+def api_trigger_error_log():
+    from datetime import datetime
+
+    timestamp = datetime.now().isoformat()
+    logger.error(f"This is a test error log for Sentry integration at {timestamp}")
+    return "Logged an error to Sentry"
 
 
 if __name__ == "__main__":

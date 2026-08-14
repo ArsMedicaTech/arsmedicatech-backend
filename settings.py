@@ -5,10 +5,18 @@ from os.path import dirname, join
 
 from dotenv import load_dotenv
 
-from lib.logger import Logger
+from lib.logger import Logger, SentryLogger
 
 logger: Logger = Logger()
 
+
+# import logging
+# logging.basicConfig(level=logging.INFO)
+
+# ── 1. Pull secrets into os.environ FIRST ────────────────────────────────────
+from vault_loader import load_vault_secrets
+
+load_vault_secrets()  # reads SERVICE_NAME + VAULT_DB_ROLES from env
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -60,8 +68,28 @@ FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "super-secret-key")
 
 BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:3123/api")
 
+FHIR_BASE_URL = os.environ.get("FHIR_BASE_URL", "https://fhir.synapticl.com/fhir")
+
+FHIR_GATEWAY_URL = os.environ.get(
+    "FHIR_GATEWAY_URL",
+    "http://fhir-gateway.arsmedicatech-synapticl.svc.cluster.local:8080/fhir",
+)
+
 # MCP_URL = "http://localhost:9000/mcp"
 MCP_URL = os.environ.get("MCP_URL", "http://mcp-server/mcp/")
+
+# Hosts allowed to receive the encrypted x-session-token header. Client-supplied
+# MCP servers (via mcp_config in the chat request) are only trusted with the
+# user's session token if their host appears in this allowlist, to prevent a
+# malicious client-configured MCP endpoint from harvesting the token.
+MCP_TRUSTED_HOSTS = tuple(
+    h.strip()
+    for h in os.environ.get(
+        "MCP_TRUSTED_HOSTS",
+        "localhost,127.0.0.1,mcp-server,coaching.synapticl.com,mcp.arsmedicatech.com",
+    ).split(",")
+    if h.strip()
+)
 
 TEST_OPTIMAL_KEY = os.environ.get(
     "OPTIMAL_KEY", "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
@@ -81,6 +109,10 @@ if not SENTRY_DSN:
     logger.error("SENTRY_DSN is not set. Sentry will not be initialized.")
     raise ValueError("SENTRY_DSN must be set in settings.py or environment variable")
 
+SentryLogger.init(SENTRY_DSN)
+sentry_logger: SentryLogger = SentryLogger()
+logger._sentry = sentry_logger
+
 DEMO_ADMIN_USERNAME = os.environ.get("DEMO_ADMIN_USERNAME", "admin")
 DEMO_ADMIN_PASSWORD = os.environ.get("DEMO_ADMIN_PASSWORD", "admin")
 
@@ -99,6 +131,12 @@ TEXTRACT_AWS_SECRET_ACCESS_KEY = os.environ.get(
 )
 
 UMLS_API_KEY = os.environ.get("UMLS_API_KEY", "your-umls-api-key")
+
+ICD_AUTOCODER_URL = os.environ.get("ICD_AUTOCODER_URL", "")
+ICD_AUTOCODER_TIMEOUT = int(os.environ.get("ICD_AUTOCODER_TIMEOUT", 10))
+ICD_AUTOCODER_RATE_LIMIT = int(os.environ.get("ICD_AUTOCODER_RATE_LIMIT", 60))
+ICD_AUTOCODER_RATE_WINDOW = int(os.environ.get("ICD_AUTOCODER_RATE_WINDOW", 60))
+ICD_AUTOCODER_FEEDBACK_TABLE = os.environ.get("ICD_AUTOCODER_FEEDBACK_TABLE", "icd_feedback")
 
 
 # AWS Cognito Configuration
@@ -178,3 +216,114 @@ KEYCLOAK_SERVER_METADATA_URL = os.environ.get(
 )
 
 FRONTEND_REDIRECT = os.environ.get("FRONTEND_REDIRECT", "http://localhost:3000")
+
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://localhost:9000")
+MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
+
+MINIO_ENCOUNTER_RECORDINGS_BUCKET = os.environ.get(
+    "MINIO_ENCOUNTER_RECORDINGS_BUCKET", "encounter-recordings"
+)
+
+# Typesense ICD-10-CM search (mirrors arsmedicatech-nanoservices/settings.py —
+# amt_nano.services.icd_search_service imports these names directly)
+TYPESENSE_URL = os.environ.get("TYPESENSE_URL", "")
+TYPESENSE_API_KEY = os.environ.get("TYPESENSE_API_KEY", "")
+TYPESENSE_ICD_COLLECTION = os.environ.get("TYPESENSE_ICD_COLLECTION", "icd_codes")
+TYPESENSE_STRUCTURED_CONTENT_ALIAS = os.environ.get(
+    "TYPESENSE_STRUCTURED_CONTENT_ALIAS", "structured_content"
+)
+
+# amt_nano.services.icd_autocoder_service imports these directly
+NER_SERVICE_URL = os.environ.get(
+    "NER_SERVICE_URL",
+    "http://ner.arsmedicatech-oss.svc.cluster.local/ner/extract",
+)
+NER_TIMEOUT_SECONDS = float(os.environ.get("NER_TIMEOUT_SECONDS", "10"))
+ICD_RANKING_ENABLED = os.environ.get("ICD_RANKING_ENABLED", "false").lower() == "true"
+ICD_RANKING_MODEL = os.environ.get("ICD_RANKING_MODEL", "")
+
+
+class Config:
+    SURREALDB_NAMESPACE = SURREALDB_NAMESPACE
+    SURREALDB_DATABASE = SURREALDB_DATABASE
+    SURREALDB_USER = SURREALDB_USER
+    SURREALDB_PASS = SURREALDB_PASS
+    SURREALDB_PROTOCOL = SURREALDB_PROTOCOL
+    SURREALDB_HOST = SURREALDB_HOST
+    SURREALDB_PORT = SURREALDB_PORT
+    SURREALDB_URL = SURREALDB_URL
+    SURREALDB_ICD_DB = SURREALDB_ICD_DB
+    ENCRYPTION_KEY = ENCRYPTION_KEY
+    PORT = PORT
+    DEBUG = DEBUG
+    HOST = HOST
+    NCBI_API_KEY = NCBI_API_KEY
+    FLASK_SECRET_KEY = FLASK_SECRET_KEY
+    BASE_URL = BASE_URL
+    FHIR_BASE_URL = FHIR_BASE_URL
+    FHIR_GATEWAY_URL = FHIR_GATEWAY_URL
+    MCP_URL = MCP_URL
+    MCP_TRUSTED_HOSTS = MCP_TRUSTED_HOSTS
+    OPTIMAL_URL = OPTIMAL_URL
+    REDIS_HOST = REDIS_HOST
+    REDIS_PORT = REDIS_PORT
+    NOTIFICATIONS_CHANNEL = NOTIFICATIONS_CHANNEL
+    UPLOADS_CHANNEL = UPLOADS_CHANNEL
+    SENTRY_DSN = SENTRY_DSN
+    DEMO_ADMIN_USERNAME = DEMO_ADMIN_USERNAME
+    DEMO_ADMIN_PASSWORD = DEMO_ADMIN_PASSWORD
+    BUCKET_NAME = BUCKET_NAME
+    S3_AWS_ACCESS_KEY_ID = S3_AWS_ACCESS_KEY_ID
+    S3_AWS_SECRET_ACCESS_KEY = S3_AWS_SECRET_ACCESS_KEY
+    TEXTRACT_AWS_ACCESS_KEY_ID = TEXTRACT_AWS_ACCESS_KEY_ID
+    TEXTRACT_AWS_SECRET_ACCESS_KEY = TEXTRACT_AWS_SECRET_ACCESS_KEY
+    UMLS_API_KEY = UMLS_API_KEY
+    ICD_AUTOCODER_URL = ICD_AUTOCODER_URL
+    ICD_AUTOCODER_TIMEOUT = ICD_AUTOCODER_TIMEOUT
+    ICD_AUTOCODER_RATE_LIMIT = ICD_AUTOCODER_RATE_LIMIT
+    ICD_AUTOCODER_RATE_WINDOW = ICD_AUTOCODER_RATE_WINDOW
+    ICD_AUTOCODER_FEEDBACK_TABLE = ICD_AUTOCODER_FEEDBACK_TABLE
+    AWS_REGION = AWS_REGION
+    COGNITO_DOMAIN = COGNITO_DOMAIN
+    USER_POOL_ID = USER_POOL_ID
+    CLIENT_ID = CLIENT_ID
+    CLIENT_SECRET = CLIENT_SECRET
+    LOGINRADIUS_SITE_URL = LOGINRADIUS_SITE_URL
+    LOGINRADIUS_OIDC_APP_NAME = LOGINRADIUS_OIDC_APP_NAME
+    LOGINRADIUS_CLIENT_ID = LOGINRADIUS_CLIENT_ID
+    LOGINRADIUS_CLIENT_SECRET = LOGINRADIUS_CLIENT_SECRET
+    REDIRECT_URI = REDIRECT_URI
+    COGNITO_LOGIN_URL = COGNITO_LOGIN_URL
+    LOGOUT_URI = LOGOUT_URI
+    REACT_PORT = REACT_PORT
+    APP_URL = APP_URL
+    AGENT_VERSION = AGENT_VERSION
+    CORS_ORIGINS = CORS_ORIGINS
+    KEYCLOAK_CLIENT_ID = KEYCLOAK_CLIENT_ID
+    KEYCLOAK_CLIENT_SECRET = KEYCLOAK_CLIENT_SECRET
+    KEYCLOAK_AUTH_HOST = KEYCLOAK_AUTH_HOST
+    KEYCLOAK_REALM = KEYCLOAK_REALM
+    KEYCLOAK_BASE_URL = KEYCLOAK_BASE_URL
+    KEYCLOAK_SERVER_METADATA_URL = KEYCLOAK_SERVER_METADATA_URL
+    FRONTEND_REDIRECT = FRONTEND_REDIRECT
+    MINIO_ENDPOINT = MINIO_ENDPOINT
+    MINIO_ACCESS_KEY = MINIO_ACCESS_KEY
+    MINIO_SECRET_KEY = MINIO_SECRET_KEY
+    MINIO_ENCOUNTER_RECORDINGS_BUCKET = MINIO_ENCOUNTER_RECORDINGS_BUCKET
+    TYPESENSE_API_KEY = TYPESENSE_API_KEY
+    TYPESENSE_URL = TYPESENSE_URL
+    TYPESENSE_ICD_COLLECTION = TYPESENSE_ICD_COLLECTION
+    TYPESENSE_STRUCTURED_CONTENT_ALIAS = TYPESENSE_STRUCTURED_CONTENT_ALIAS
+    NER_SERVICE_URL = NER_SERVICE_URL
+    NER_TIMEOUT_SECONDS = NER_TIMEOUT_SECONDS
+    ICD_RANKING_ENABLED = ICD_RANKING_ENABLED
+    ICD_RANKING_MODEL = ICD_RANKING_MODEL
+
+    @classmethod
+    def as_dict(cls) -> dict:
+        return {
+            k: v
+            for k, v in vars(cls).items()
+            if not k.startswith("_") and not callable(v)
+        }

@@ -205,6 +205,127 @@ class LLMChatMessage:
         """
 
 
+class LLMApiTrace:
+    """
+    Represents a single LLM API round-trip trace for observability.
+
+    One pre-call row is written before the outbound OpenAI call, then MERGEd with
+    response metadata after the call returns. Multiple rows can share the same
+    trace_id (one per tool-call recursion / turn_index).
+    """
+
+    def __init__(
+        self,
+        trace_id: str,
+        thread_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        turn_index: int = 0,
+        model: Optional[str] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        tool_names: Optional[List[str]] = None,
+        tool_definitions_hash: Optional[str] = None,
+        response_format: Optional[str] = None,
+        request_timestamp: Optional[str] = None,
+        finish_reason: Optional[str] = None,
+        content: Optional[str] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        usage: Optional[Dict[str, Any]] = None,
+        duration_ms: Optional[int] = None,
+        error: Optional[str] = None,
+        id: Optional[str] = None,
+    ) -> None:
+        self.trace_id = trace_id
+        self.thread_id = thread_id
+        self.user_id = user_id
+        self.turn_index = turn_index
+        self.model = model
+        self.messages = messages or []
+        self.tool_names = tool_names
+        self.tool_definitions_hash = tool_definitions_hash
+        self.response_format = response_format
+        self.request_timestamp = request_timestamp or datetime.now(timezone.utc).isoformat()
+        self.finish_reason = finish_reason
+        self.content = content
+        self.tool_calls = tool_calls
+        self.usage = usage
+        self.duration_ms = duration_ms
+        self.error = error
+        self.id = id
+
+    def to_dict(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "trace_id": self.trace_id,
+            "turn_index": self.turn_index,
+            "request_timestamp": self.request_timestamp,
+        }
+        for key in (
+            "thread_id",
+            "user_id",
+            "model",
+            "messages",
+            "tool_names",
+            "tool_definitions_hash",
+            "response_format",
+            "finish_reason",
+            "content",
+            "tool_calls",
+            "usage",
+            "duration_ms",
+            "error",
+        ):
+            value = getattr(self, key)
+            if value is not None:
+                result[key] = value
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "LLMApiTrace":
+        trace_id = data.get("trace_id")
+        if not trace_id:
+            raise ValueError("trace_id is required and cannot be None")
+        return cls(
+            trace_id=trace_id,
+            thread_id=data.get("thread_id"),
+            user_id=data.get("user_id"),
+            turn_index=data.get("turn_index", 0),
+            model=data.get("model"),
+            messages=data.get("messages"),
+            tool_names=data.get("tool_names"),
+            tool_definitions_hash=data.get("tool_definitions_hash"),
+            response_format=data.get("response_format"),
+            request_timestamp=data.get("request_timestamp"),
+            finish_reason=data.get("finish_reason"),
+            content=data.get("content"),
+            tool_calls=data.get("tool_calls"),
+            usage=data.get("usage"),
+            duration_ms=data.get("duration_ms"),
+            error=data.get("error"),
+            id=data.get("id"),
+        )
+
+    @classmethod
+    def schema(cls) -> str:
+        return """
+            DEFINE TABLE llm_api_trace SCHEMAFULL;
+            DEFINE FIELD trace_id ON llm_api_trace TYPE string;
+            DEFINE FIELD thread_id ON llm_api_trace TYPE option<record<llm_chat_thread>>;
+            DEFINE FIELD user_id ON llm_api_trace TYPE option<record<user>>;
+            DEFINE FIELD turn_index ON llm_api_trace TYPE int;
+            DEFINE FIELD model ON llm_api_trace TYPE option<string>;
+            DEFINE FIELD messages ON llm_api_trace TYPE option<array<object>>;
+            DEFINE FIELD tool_names ON llm_api_trace TYPE option<array<string>>;
+            DEFINE FIELD tool_definitions_hash ON llm_api_trace TYPE option<string>;
+            DEFINE FIELD response_format ON llm_api_trace TYPE option<string>;
+            DEFINE FIELD request_timestamp ON llm_api_trace TYPE datetime VALUE time::now() READONLY;
+            DEFINE FIELD finish_reason ON llm_api_trace TYPE option<string>;
+            DEFINE FIELD content ON llm_api_trace TYPE option<string>;
+            DEFINE FIELD tool_calls ON llm_api_trace TYPE option<array<object>>;
+            DEFINE FIELD usage ON llm_api_trace TYPE option<object>;
+            DEFINE FIELD duration_ms ON llm_api_trace TYPE option<int>;
+            DEFINE FIELD error ON llm_api_trace TYPE option<string>;
+        """
+
+
 # Legacy LLMChat class - kept for backward compatibility during migration
 class LLMChat:
     """

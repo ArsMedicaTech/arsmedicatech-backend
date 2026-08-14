@@ -6,7 +6,7 @@ from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, List, Optional, TypeVar, cast
 
-from flask import g, jsonify, request, session
+from flask import g, jsonify, request, session, current_app
 
 from lib.models.user.user_session import UserSession
 from lib.services.user_service import UserService
@@ -35,6 +35,9 @@ def require_auth(f: Callable[..., Any]) -> Callable[..., Any]:
         :param kwargs: Keyword args passed to the decorated function.
         :return: Optional[Callable]: The original function if authentication is successful, otherwise a 401 response.
         """
+        # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+        if request.method == "OPTIONS": return current_app.make_default_options_response()
+
         # Get token from request headers or session
         token = request.headers.get("Authorization")
         if token and token.startswith("Bearer "):
@@ -74,6 +77,7 @@ def require_auth(f: Callable[..., Any]) -> Callable[..., Any]:
                     user_id=str(user.id),
                     username=user.username,
                     role=user.role,
+                    session_token=session.get("auth_token"),
                 )
                 g.user_session = user_session
                 g.user_role = user.role
@@ -136,6 +140,9 @@ def require_role(required_role: str) -> Callable[[F], F]:
             :param kwargs: Keyword args passed to the decorated function.
             :return: Optional[Callable]: The original function if authentication and role checks pass, otherwise a 403 response.
             """
+            # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+            if request.method == "OPTIONS": return current_app.make_default_options_response()
+
             # First check authentication
             auth_result = require_auth(lambda: None)()
             if auth_result is not None:
@@ -199,6 +206,46 @@ def require_patient(f: F) -> F:
     return require_role("patient")(f)
 
 
+def require_admin_or_provider(f: F) -> F:
+    """
+    Decorator to require an authenticated admin or provider session.
+
+    This is an authoring-surface guard: unauthenticated callers and patient-role
+    callers are both rejected with 403 Forbidden.
+    :param f: The function to decorate (Flask route handler).
+    :return: The decorated function that checks for an admin or provider role.
+    """
+
+    @wraps(f)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+        if request.method == "OPTIONS":
+            return current_app.make_default_options_response()
+
+        # Require authentication; treat any auth failure as 403 for this surface.
+        auth_result = require_auth(lambda: None)()
+        if auth_result is not None:
+            if isinstance(auth_result, tuple) and len(auth_result) == 2 and auth_result[1] == 401:
+                return jsonify({"error": "Authentication required"}), 403
+            return auth_result
+
+        user_session = getattr(g, "user_session", None)
+        if not user_session:
+            return jsonify({"error": "Authentication required"}), 403
+
+        user_service = UserService()
+        user_service.connect()
+        try:
+            user = user_service.get_user_by_id(user_session.user_id)
+            if not user or not (user.is_admin() or user.is_provider()):
+                return jsonify({"error": "Admin or provider role required"}), 403
+            return f(*args, **kwargs)
+        finally:
+            user_service.close()
+
+    return cast(F, decorated_function)
+
+
 def optional_auth(f: F) -> F:
     """
     Decorator to optionally authenticate user (doesn't fail if no auth)
@@ -218,6 +265,9 @@ def optional_auth(f: F) -> F:
         :param kwargs: Keyword args passed to the decorated function.
         :return: Any: The original function result, regardless of authentication.
         """
+        # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+        if request.method == "OPTIONS": return current_app.make_default_options_response()
+
         # Get token from request headers or session
         token = request.headers.get("Authorization")
         if token and token.startswith("Bearer "):
@@ -255,6 +305,9 @@ def require_api_key(f: Callable[..., Any]) -> Callable[..., Any]:
 
     @wraps(f)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+        if request.method == "OPTIONS": return current_app.make_default_options_response()
+
         api_key = request.headers.get("X-API-Key")
         if not api_key:
             logger.debug("No API key found in X-API-Key header")
@@ -297,6 +350,9 @@ def require_api_permission(
     def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(f)
         def decorated_function(*args: Any, **kwargs: Any) -> Any:
+            # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+            if request.method == "OPTIONS": return current_app.make_default_options_response()
+
             # First check if we have API key info (from @require_api_key)
             api_key_obj = getattr(g, "api_key", None)
             if not api_key_obj:
@@ -333,6 +389,9 @@ def require_api_permissions(
     def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(f)
         def decorated_function(*args: Any, **kwargs: Any) -> Any:
+            # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+            if request.method == "OPTIONS": return current_app.make_default_options_response()
+
             # First check if we have API key info (from @require_api_key)
             api_key_obj = getattr(g, "api_key", None)
             if not api_key_obj:
@@ -381,9 +440,11 @@ def require_flexible_auth(f: Callable[..., Any]) -> Callable[..., Any]:
 
     @wraps(f)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        # Pass CORS preflight requests through - auth decorators must not intercept OPTIONS
+        if request.method == "OPTIONS": return current_app.make_default_options_response()
+
         user_session: Optional[UserSession] = None
         token = request.headers.get("Authorization")
-        print(f"Auth header token: {token}")
         # Safely handle missing or malformed Authorization header before accessing token part
         if token and token.startswith("Bearer "):
             dev_token = token[len("Bearer ") :]

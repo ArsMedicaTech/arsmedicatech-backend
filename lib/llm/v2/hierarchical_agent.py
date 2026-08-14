@@ -1,7 +1,9 @@
 import asyncio
+import json
 import logging
 from types import TracebackType
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Sequence
+from urllib.parse import urlparse
 
 from fastmcp import Client
 
@@ -17,13 +19,56 @@ class HierarchicalAgentManager:
     presenting a unified, hierarchical interface of their capabilities.
     """
 
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        session_token: Optional[str] = None,
+        trusted_hosts: Optional[Sequence[str]] = None,
+    ):
+        self.config = self._inject_session_headers(
+            config, session_token, trusted_hosts
+        )
         self.client = Client(self.config)
         self.openai_defs: List[Dict[str, Any]] = []
         self.func_lookup: Dict[str, Callable[..., Any]] = {}
         self.resources: List[Any] = []  # You can store resource info here
         self.prompts: List[Any] = []  # You can store prompt info here
+
+    @staticmethod
+    def _inject_session_headers(
+        config: Dict[str, Any],
+        session_token: Optional[str],
+        trusted_hosts: Optional[Sequence[str]],
+    ) -> Dict[str, Any]:
+        """
+        Attach an x-session-token header (the encrypted OpenAI API key) to
+        remote MCP servers so tools that need per-user credentials (e.g. `rag`)
+        can read them the same way v1's `fetch_mcp_tool_defs` wrapper did.
+
+        :param config: Base MCP configuration (mcpServers dict).
+        :param session_token: Encrypted OpenAI API key to forward as a header.
+        :param trusted_hosts: If provided, only servers whose host is in this
+            list receive the header, to avoid leaking the token to arbitrary
+            client-supplied MCP servers.
+        :return: A new config dict with headers injected; the input is not mutated.
+        """
+        if not session_token:
+            return config
+
+        cfg = json.loads(json.dumps(config))  # deep copy; don't mutate caller's config
+        for name, server in cfg.get("mcpServers", {}).items():
+            url = server.get("url")
+            if not url:
+                continue  # stdio server, no headers to attach
+            if trusted_hosts is not None:
+                host = urlparse(url).hostname or ""
+                if host not in trusted_hosts:
+                    logger.info(
+                        f"Skipping session header for untrusted MCP server: {name}"
+                    )
+                    continue
+            server.setdefault("headers", {})["x-session-token"] = session_token
+        return cfg
 
     async def __aenter__(self):
         """
@@ -85,6 +130,10 @@ class HierarchicalAgentManager:
         """Creates a wrapper to call a specific tool using the persistent client."""
 
         async def _call(**kwargs: Any) -> Any:
+            # session_id is a v1-only convention consumed by process_tool_call;
+            # it must never be forwarded as a tool argument here (the token is
+            # already attached as an x-session-token header via self.client).
+            kwargs.pop("session_id", None)
             logger.info(f"Calling hierarchical tool: {tool_name} with args: {kwargs}")
             try:
                 # Use the single, persistent self.client

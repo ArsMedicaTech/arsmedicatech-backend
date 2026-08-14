@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 ENV FLASK_APP=app.py
 ENV PYTHONUNBUFFERED=1
@@ -32,6 +32,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY ./lib ./lib
 COPY ./settings.py .
+COPY ./vault_loader.py .
 COPY ./app.py .
 
 COPY ./plugins ./plugins

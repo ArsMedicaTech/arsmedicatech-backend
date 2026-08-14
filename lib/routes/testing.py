@@ -14,7 +14,8 @@ from lib.models.patient.patient_crud import (
     update_patient,
 )
 from lib.models.patient.placeholders import add_some_placeholder_patients
-from settings import logger
+from settings import Config, logger, sentry_logger
+from lib.logger import ErrorType, LogEvent
 
 
 def test_surrealdb_route() -> Tuple[Response, int]:
@@ -101,3 +102,23 @@ def debug_session_route() -> Tuple[Response, int]:
     logger.debug(f"Session data: {dict(session)}")
     logger.debug(f"Request headers: {dict(request.headers)}")
     return jsonify({"session": dict(session), "headers": dict(request.headers)}), 200
+
+
+def debug_sentry_route() -> Tuple[Response, int]:
+    """
+    Debug endpoint that fires a test Sentry event containing all
+    current settings from Config as extra_data.
+
+    :return: JSON response confirming the event was sent.
+    """
+    config_data = {k: str(v) for k, v in Config.as_dict().items()}
+    sentry_logger.log(LogEvent(
+        error_type=ErrorType.other,
+        component_name="debug_sentry_route",
+        error=RuntimeError("Debug Sentry test event"),
+        description="Manual debug event triggered via GET /api/debug/sentry",
+        level="debug",
+        extra_data=config_data,
+    ))
+    logger.info("debug_sentry_route: Sentry test event sent")
+    return jsonify({"status": "ok", "message": "Sentry test event sent"}), 200

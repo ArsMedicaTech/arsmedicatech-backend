@@ -320,19 +320,34 @@ def get_current_user_info_route() -> Tuple[Response, int]:
 
         user = user_service.get_user_by_id(user_id)
         if user:
+            if user.role == "provider" and not user.fhir_practitioner_id:
+                logger.warning(
+                    f"Provider user missing fhir_practitioner_id in /auth/me response: {user.id}"
+                )
+            if user.role == "patient" and not user.fhir_patient_id:
+                logger.warning(
+                    f"Patient user missing fhir_patient_id in /auth/me response: {user.id}"
+                )
+
+            token = current_user.session_token if current_user else None
             return (
                 jsonify(
                     {
                         "user": {
                             "id": user.id,
+                            "external_id": user.external_id,
+                            "auth_provider": user.auth_provider,
                             "username": user.username,
                             "email": user.email,
                             "first_name": user.first_name,
                             "last_name": user.last_name,
                             "role": user.role,
+                            "fhir_practitioner_id": user.fhir_practitioner_id,
+                            "fhir_patient_id": user.fhir_patient_id,
                             "is_active": user.is_active,
                             "created_at": user.created_at,
-                        }
+                        },
+                        "token": token,
                     }
                 ),
                 200,
@@ -843,6 +858,7 @@ def get_user_profile_route() -> Tuple[Response, int]:
                 "phone": user.phone,
                 "is_active": user.is_active,
                 "created_at": user.created_at,
+                "is_first_time": user.is_first_time,
             }
             logger.debug(f"Returning profile data: {profile_data}")
 
@@ -1058,3 +1074,44 @@ def create_user_programmatically_route() -> Tuple[Response, int]:
     except Exception as e:
         logger.error(f"Error creating user programmatically: {e}")
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
+def admin_encrypt_route() -> Tuple[Response, int]:
+    """
+    Encrypt one or more string values using the encryption service (super admin only).
+
+    Expects a JSON object with string values. Returns the same keys with encrypted values.
+
+    Example request:
+    POST /api/admin/encrypt
+    Headers:
+        X-Super-Admin-Key: <your-ENCRYPTION_KEY-from-.env>
+    Body:
+    {"my_random_string": "SOME_RANDOM_STRING"}
+
+    Example response:
+    {"encrypted_values": {"my_random_string": "<encrypted_ciphertext>"}}
+
+    :return: Response object with encrypted_values map.
+    """
+    try:
+        data = request.get_json()
+        if not data or not isinstance(data, dict):
+            return jsonify({"error": "JSON object with string values required"}), 400
+
+        from amt_nano.services.encryption import get_encryption_service
+
+        enc = get_encryption_service()
+        encrypted: Dict[str, str] = {}
+        for k, v in data.items():
+            if not isinstance(v, str):
+                return (
+                    jsonify({"error": f"Value for key '{k}' must be a string"}),
+                    400,
+                )
+            encrypted[k] = enc.encrypt_api_key(v)
+
+        return jsonify({"encrypted_values": encrypted}), 200
+    except Exception as e:
+        logger.error(f"Error in admin encrypt: {e}")
+        return jsonify({"error": "Internal server error"}), 500
