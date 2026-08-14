@@ -110,6 +110,7 @@ from lib.routes.testing import (
     test_surrealdb_route,
 )
 from lib.routes.icd_autocoder import icd_autocoder_bp
+from lib.routes.structured_content import structured_content_bp
 from lib.routes.uploads import uploads_bp
 from lib.routes.fhir_proxy import fhir_proxy_bp
 from lib.routes.user_notes import (
@@ -1980,6 +1981,7 @@ app.register_blueprint(sse_bp)
 app.register_blueprint(uploads_bp)
 app.register_blueprint(fhir_proxy_bp)
 app.register_blueprint(icd_autocoder_bp)
+app.register_blueprint(structured_content_bp)
 
 from asgiref.wsgi import WsgiToAsgi
 
