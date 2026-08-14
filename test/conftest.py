@@ -119,14 +119,28 @@ def setup_test_environment(monkeypatch):
     try:
         import settings
     except ImportError:
-        # Create a mock settings module
+        # Create a mock settings module with the attributes required by the
+        # services and routes used across the test suite.
         mock_settings = Mock()
         mock_settings.SURREALDB_URL = "http://localhost:8000"
         mock_settings.SURREALDB_NAMESPACE = "test"
         mock_settings.SURREALDB_DATABASE = "test"
         mock_settings.SURREALDB_USER = "test_user"
         mock_settings.SURREALDB_PASS = "test_password"
-        
+        mock_settings.MIGRATION_OPENAI_API_KEY = "sk-test"
+        mock_settings.TYPESENSE_URL = "http://localhost:8108"
+        mock_settings.TYPESENSE_API_KEY = "test-key"
+        mock_settings.TYPESENSE_STRUCTURED_CONTENT_ALIAS = "structured_content"
+        mock_settings.TYPESENSE_ICD_COLLECTION = "icd_codes"
+        mock_settings.FHIR_BASE_URL = "http://fake-hapi/fhir"
+        mock_settings.FHIR_GATEWAY_URL = "http://fake-hapi/fhir"
+        mock_settings.KEYCLOAK_BASE_URL = "http://fake-keycloak"
+        mock_settings.KEYCLOAK_REALM = "test"
+        mock_settings.KEYCLOAK_CLIENT_ID = "test-client"
+        mock_settings.KEYCLOAK_CLIENT_SECRET = "test-secret"
+        mock_settings.ENCRYPTION_KEY = "a" * 32
+        mock_settings.logger = MagicMock()
+
         sys.modules['settings'] = mock_settings
 
 
